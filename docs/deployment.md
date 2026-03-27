@@ -14,23 +14,18 @@ git push -u origin main
 ## GitHub Pages 文档
 
 ```bash
-pip install -e ".[docs]"
-python scripts/generate_gallery.py
-mkdocs gh-deploy
+bash scripts/twave.sh pages
 ```
 
 ## Streamlit 演示
 
-本项目同时包含一个轻量交互页：
+```bash
+bash scripts/twave.sh app
+```
+
+## PyPI
 
 ```bash
-pip install -e ".[app]"
-streamlit run apps/streamlit_app.py
+bash scripts/twave.sh build
+bash scripts/twave.sh publish
 ```
-
-如果需要在线部署，可以推送到 Streamlit Community Cloud，入口文件为：
-
-```text
-apps/streamlit_app.py
-```
-

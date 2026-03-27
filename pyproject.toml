@@ -1,13 +1,14 @@
 [build-system]
-requires = ["hatchling>=1.25"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "tropical-wave-tools"
 version = "0.1.0"
 description = "Modernized tropical atmospheric wave analysis toolkit built from the original wave_tools research code."
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.9"
 authors = [
   { name = "Jianpu" },
@@ -22,7 +23,6 @@ keywords = [
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.9",
@@ -30,12 +30,12 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Atmospheric Science",
 ]
 dependencies = [
-  "joblib>=1.3",
-  "matplotlib>=3.8",
-  "numpy>=1.24",
-  "pandas>=2.0",
-  "scipy>=1.11",
-  "xarray>=2024.1",
+  "joblib>=1.2",
+  "matplotlib>=3.5",
+  "numpy>=1.23,<2",
+  "pandas>=1.4",
+  "scipy>=1.9",
+  "xarray>=2022.3",
 ]
 
 [project.optional-dependencies]
@@ -74,27 +74,22 @@ grid = [
 tropical-wave-tools = "tropical_wave_tools.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/your-name/tropical-wave-tools"
-Documentation = "https://your-name.github.io/tropical-wave-tools/"
-Repository = "https://github.com/your-name/tropical-wave-tools"
-Issues = "https://github.com/your-name/tropical-wave-tools/issues"
+Homepage = "https://github.com/Blissful-Jasper/tropical-wave-tools"
+Documentation = "https://Blissful-Jasper.github.io/tropical-wave-tools/"
+Repository = "https://github.com/Blissful-Jasper/tropical-wave-tools"
+Issues = "https://github.com/Blissful-Jasper/tropical-wave-tools/issues"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/tropical_wave_tools"]
-artifacts = ["src/tropical_wave_tools/data/*.nc"]
+[tool.setuptools]
+include-package-data = true
 
-[tool.hatch.build.targets.sdist]
-include = [
-  "/src",
-  "/tests",
-  "/docs",
-  "/examples",
-  "/scripts",
-  "/apps",
-  "/README.md",
-  "/LICENSE",
-  "/mkdocs.yml",
-]
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+tropical_wave_tools = ["data/*.nc", "data/*.md"]
 
 [tool.ruff]
 line-length = 100

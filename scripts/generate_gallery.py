@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import sys
 
 import matplotlib.pyplot as plt
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SRC_ROOT = PROJECT_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
 
 from tropical_wave_tools.filters import CCKWFilter, WaveFilter
 from tropical_wave_tools.plotting import plot_spatial_std_comparison, plot_wk_spectrum
@@ -13,8 +19,7 @@ from tropical_wave_tools.spectral import analyze_wk_spectrum
 
 def main() -> None:
     os.environ.setdefault("MPLCONFIGDIR", "/tmp/mpl")
-    project_root = Path(__file__).resolve().parents[1]
-    docs_assets = project_root / "docs" / "assets"
+    docs_assets = PROJECT_ROOT / "docs" / "assets"
     docs_assets.mkdir(parents=True, exist_ok=True)
 
     data = open_example_olr()
@@ -36,4 +41,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

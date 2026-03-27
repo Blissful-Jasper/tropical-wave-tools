@@ -1,0 +1,8 @@
+include README.md
+include LICENSE
+include mkdocs.yml
+include environment.yml
+recursive-include docs *.md *.png
+recursive-include examples *.py
+recursive-include scripts *.py *.sh
+recursive-include tests *.py
