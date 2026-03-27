@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Editors
+.DS_Store
+.idea/
+.vscode/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+site/
+
+# Project outputs
+outputs/
+figures/
+tmp/
+
+# Local data copies
+data/local/*.nc
+data/local/*.zarr
+
+# Streamlit and notebook caches
+.streamlit/
+.ipynb_checkpoints/
+

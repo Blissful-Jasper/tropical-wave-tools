@@ -1,0 +1,29 @@
+site_name: Tropical Wave Tools
+site_url: https://your-name.github.io/tropical-wave-tools/
+repo_url: https://github.com/your-name/tropical-wave-tools
+repo_name: your-name/tropical-wave-tools
+
+theme:
+  name: material
+  language: zh
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - content.code.copy
+
+nav:
+  - 首页: index.md
+  - 快速开始: getting-started.md
+  - 项目结构: structure.md
+  - 示例与结果: examples.md
+  - 部署发布: deployment.md
+  - 迁移说明: migration.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
