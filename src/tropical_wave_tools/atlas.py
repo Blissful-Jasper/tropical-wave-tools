@@ -451,6 +451,7 @@ def compute_monthly_climatology_and_significance(data: xr.DataArray) -> tuple[xr
     """Return monthly RMS climatology and a p-value against each year's annual-mean RMS."""
     monthly_samples = compute_monthly_rms_samples(data)
     climatology = monthly_samples.groupby("time.month").mean("time")
+    climatology = climatology.reindex(month=np.arange(1, 13, dtype=int))
     annual_mean = monthly_samples.groupby("time.year").mean("time")
     monthly_anomaly = monthly_samples.groupby("time.year") - annual_mean
 
@@ -475,6 +476,7 @@ def compute_longitude_mean_monthly_rms_climatology_and_significance(
     if "lon" in monthly_samples.dims:
         monthly_samples = monthly_samples.mean("lon")
     climatology = monthly_samples.groupby("time.month").mean("time")
+    climatology = climatology.reindex(month=np.arange(1, 13, dtype=int))
     annual_mean = monthly_samples.groupby("time.year").mean("time")
     monthly_anomaly = monthly_samples.groupby("time.year") - annual_mean
 
