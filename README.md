@@ -2,6 +2,12 @@
 
 面向热带波和气候诊断的 Python 工具包，保留原始 `wave_tools` 的科研逻辑，并整理为可测试、可发布、可展示的项目结构。
 
+更完整的使用说明见：
+
+- `docs/user-guide.md`
+- `docs/getting-started.md`
+- `docs/examples.md`
+
 ## Setup
 
 ```bash
@@ -28,6 +34,8 @@ tropical-wave-tools prepare-sample-data \
 bash scripts/twave.sh test
 bash scripts/twave.sh docs
 bash scripts/twave.sh docs-serve
+# or pick a specific port if 8000 is occupied
+bash scripts/twave.sh docs-serve --port 8012
 bash scripts/twave.sh pages
 bash scripts/twave.sh app
 bash scripts/twave.sh build

@@ -42,12 +42,16 @@ class WaveFilter:
         period_days: Tuple[Optional[float], Optional[float]],
         wavenumber: Tuple[int, int],
         equivalent_depth: Tuple[Optional[float], Optional[float]] = (None, None),
+        meridional_mode: Optional[int] = None,
+        dispersion_family: str = "none",
     ) -> None:
         """Register a new wave band."""
         self.wave_specs[wave_name.lower()] = WaveSpec(
             period_days=period_days,
             wavenumber=wavenumber,
             equivalent_depth=equivalent_depth,
+            meridional_mode=meridional_mode,
+            dispersion_family=dispersion_family,
         )
 
     def get_available_waves(self) -> List[str]:
@@ -63,6 +67,14 @@ class WaveFilter:
             )
         return self.wave_specs[wave_key]
 
+    @staticmethod
+    def _internal_wave_name(wave_name: str) -> str:
+        """Map public aliases to the internal dispersion-branch name."""
+        wave_key = wave_name.lower()
+        if wave_key in {"eig", "eig0", "ig"}:
+            return "ig0"
+        return wave_key
+
     def _kf_filter(
         self,
         in_data: Union[xr.DataArray, np.ndarray],
@@ -73,6 +85,7 @@ class WaveFilter:
         wavenumber: Tuple[int, int],
         equivalent_depth: Tuple[Optional[float], Optional[float]],
         wave_name: str,
+        meridional_mode: Optional[int] = None,
     ) -> Union[xr.DataArray, np.ndarray]:
         """
         Apply the Wheeler-Kiladis wavenumber-frequency filter on ``(time, lon)`` data.
@@ -138,15 +151,17 @@ class WaveFilter:
                 freq = k * c
             elif wave_name == "er" and np.all(np.isfinite(c)):
                 freq = -self.beta * k / (k**2 + 3 * self.beta / c)
-            elif wave_name in {"mrg", "ig0"} and np.all(np.isfinite(c)):
+            elif wave_name in {"mrg", "ig0", "eig", "eig0", "ig"} and np.all(np.isfinite(c)):
                 if k == 0:
                     freq = np.sqrt(self.beta * c)
                 elif k > 0:
                     freq = k * c * (0.5 + 0.5 * np.sqrt(1 + 4 * self.beta / (k**2 * c)))
                 else:
                     freq = k * c * (0.5 - 0.5 * np.sqrt(1 + 4 * self.beta / (k**2 * c)))
-            elif wave_name in {"ig", "ig1"} and np.all(np.isfinite(c)):
-                freq = np.sqrt(3 * self.beta * c + (k**2 * c**2))
+            elif wave_name in {"ig1", "wig", "ig2"} and np.all(np.isfinite(c)):
+                default_mode = 2 if wave_name == "ig2" else 1
+                mode_number = int(meridional_mode or default_mode)
+                freq = np.sqrt((2 * mode_number + 1) * self.beta * c + (k**2 * c**2))
 
             j_min_wave = int(np.floor(freq[0] * spc * time_dim)) if np.isfinite(freq[0]) else 0
             j_max_wave = int(np.ceil(freq[1] * spc * time_dim)) if np.isfinite(freq[1]) else freq_dim
@@ -201,7 +216,8 @@ class WaveFilter:
                 period_days=spec.period_days,
                 wavenumber=spec.wavenumber,
                 equivalent_depth=spec.equivalent_depth,
-                wave_name="ig0" if wave_name.lower() == "eig0" else wave_name.lower(),
+                wave_name=self._internal_wave_name(wave_name),
+                meridional_mode=spec.meridional_mode,
             )
             return np.asarray(filtered)
 
@@ -349,7 +365,7 @@ class CCKWFilter:
             return np.zeros((self.anomaly.sizes["time"], self.anomaly.sizes["lon"]), dtype=np.float64)
 
         legacy_filter = WaveFilter()
-        wave_name = "ig0" if self.wave_name == "eig0" else str(self.wave_name)
+        wave_name = WaveFilter._internal_wave_name(str(self.wave_name))
         lat_slice = self.anomaly.isel(lat=lat_index)
         filtered = legacy_filter._kf_filter(
             lat_slice.values,
@@ -359,6 +375,7 @@ class CCKWFilter:
             wavenumber=self.spec.wavenumber,
             equivalent_depth=self.spec.equivalent_depth,
             wave_name=wave_name,
+            meridional_mode=self.spec.meridional_mode,
         )
         return np.asarray(filtered)
 

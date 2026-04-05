@@ -81,6 +81,30 @@ socket.gethostbyname("${host}")
 PY
 }
 
+twave_pick_open_port() {
+  local preferred="${1:-8000}"
+  local host="${2:-127.0.0.1}"
+  python - <<PY
+import socket
+
+host = "${host}"
+preferred = int("${preferred}")
+candidates = [preferred, *range(preferred + 1, preferred + 50)]
+
+for port in candidates:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind((host, port))
+        except OSError:
+            continue
+        print(port)
+        raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+}
+
 twave_run_fallback_python() {
   env \
     -u CONDA_DEFAULT_ENV \

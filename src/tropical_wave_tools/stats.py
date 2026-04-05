@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 import numpy as np
+from scipy import stats as scipy_stats
 import xarray as xr
 
 from tropical_wave_tools.io import rename_standard_coordinates, to_dataarray
@@ -35,16 +36,91 @@ def _time_axis_in_days(data: xr.DataArray, dim: str) -> xr.DataArray:
     return coordinate.astype("float64")
 
 
+def _linregress_1d(x: np.ndarray, y: np.ndarray) -> tuple[float, float, float, float, float]:
+    valid = np.isfinite(x) & np.isfinite(y)
+    if valid.sum() < 2:
+        return (np.nan, np.nan, np.nan, np.nan, np.nan)
+
+    result = scipy_stats.linregress(x[valid], y[valid])
+    return (
+        float(result.slope),
+        float(result.intercept),
+        float(result.rvalue),
+        float(result.pvalue),
+        float(result.stderr),
+    )
+
+
 def linear_trend(data: xr.DataArray, *, dim: str = "time") -> xr.Dataset:
     """Estimate a linear trend using least squares."""
     array = _prepare_array(data, dim=dim)
+    coordinate = array[dim]
     axis = _time_axis_in_days(array, dim)
-    fitted = array.assign_coords({dim: axis})
-    coefficients = fitted.polyfit(dim=dim, deg=1)["polyfit_coefficients"]
-    slope = coefficients.sel(degree=1).reset_coords(drop=True).rename("slope")
-    intercept = coefficients.sel(degree=0).reset_coords(drop=True).rename("intercept")
-    slope.attrs["units"] = f"{array.attrs.get('units', 'unknown')} / day"
-    return xr.Dataset({"slope": slope, "intercept": intercept})
+    slope, intercept, rvalue, pvalue, stderr = xr.apply_ufunc(
+        _linregress_1d,
+        axis,
+        array,
+        input_core_dims=[[dim], [dim]],
+        output_core_dims=[[], [], [], [], []],
+        vectorize=True,
+        dask="parallelized",
+        output_dtypes=[float, float, float, float, float],
+    )
+    slope = slope.rename("slope")
+    intercept = intercept.rename("intercept")
+    rvalue = rvalue.rename("rvalue")
+    pvalue = pvalue.rename("pvalue")
+    stderr = stderr.rename("stderr")
+    rate_unit = "day" if np.issubdtype(coordinate.dtype, np.datetime64) else dim
+    slope.attrs["units"] = f"{array.attrs.get('units', 'unknown')} / {rate_unit}"
+    stderr.attrs["units"] = slope.attrs["units"]
+    pvalue.attrs["long_name"] = "two-sided p-value for slope"
+    return xr.Dataset(
+        {
+            "slope": slope,
+            "intercept": intercept,
+            "rvalue": rvalue,
+            "pvalue": pvalue,
+            "stderr": stderr,
+        }
+    )
+
+
+def _ttest_1samp_1d(values: np.ndarray, popmean: float) -> tuple[float, float, float]:
+    valid = np.isfinite(values)
+    if valid.sum() < 2:
+        return (np.nan, np.nan, float(valid.sum()))
+
+    result = scipy_stats.ttest_1samp(values[valid], popmean=popmean, alternative="two-sided")
+    return (float(result.statistic), float(result.pvalue), float(valid.sum()))
+
+
+def one_sample_ttest(
+    data: xr.DataArray,
+    *,
+    dim: str = "time",
+    popmean: float = 0.0,
+) -> xr.Dataset:
+    """Run a two-sided one-sample t-test along one dimension."""
+    array = _prepare_array(data, dim=dim)
+    statistic, pvalue, sample_size = xr.apply_ufunc(
+        _ttest_1samp_1d,
+        array,
+        kwargs={"popmean": float(popmean)},
+        input_core_dims=[[dim]],
+        output_core_dims=[[], [], []],
+        vectorize=True,
+        dask="parallelized",
+        output_dtypes=[float, float, float],
+    )
+    return xr.Dataset(
+        {
+            "statistic": statistic.rename("statistic"),
+            "pvalue": pvalue.rename("pvalue"),
+            "sample_size": sample_size.rename("sample_size"),
+            "mean": array.mean(dim=dim).rename("mean"),
+        }
+    )
 
 
 def pearson_correlation(
@@ -88,6 +164,7 @@ def linear_regression(
 __all__ = [
     "linear_regression",
     "linear_trend",
+    "one_sample_ttest",
     "pearson_correlation",
     "standard_deviation",
     "variance",

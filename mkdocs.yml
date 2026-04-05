@@ -7,23 +7,53 @@ theme:
   name: material
   language: zh
   features:
+    - navigation.top
     - navigation.tabs
     - navigation.sections
     - content.code.copy
 
+extra_css:
+  - stylesheets/extra.css
+
 nav:
   - 首页: index.md
-  - 快速开始: getting-started.md
-  - 项目结构: structure.md
-  - 示例与结果: examples.md
-  - 部署发布: deployment.md
-  - 迁移说明: migration.md
+  - Quick Start: getting-started.md
+  - User Guide: user-guide.md
+  - Gallery:
+      - Gallery 总览: examples.md
+      - Built-in OLR Showcase: gallery/olr-showcase.md
+      - Case 01: gallery/sample-preview.md
+      - Case 02: gallery/wk-spectrum-case.md
+      - Case 03: gallery/kelvin-hovmoller-case.md
+      - Case 04: gallery/multiwave-spatial-case.md
+      - Case 05: gallery/variance-fraction-case.md
+      - Case 06: gallery/wind-diagnostics-case.md
+      - Case 07: gallery/eof-svd-case.md
+      - Case 08: gallery/lead-lag-case.md
+      - Case 09: gallery/seasonal-trend-case.md
+      - Case 10: gallery/paper-hovmoller-case.md
+  - API:
+      - 模块总览: api/index.md
+      - 函数展示模板: api/function-template.md
+  - Methods & Notes:
+      - 方法总览: theory/index.md
+      - WK 与波动诊断流程: theory/wk-diagnostics.md
+      - Notes 总览: notes/index.md
+      - 笔记模板: notes/research-note-template.md
+      - 项目结构: structure.md
+      - 迁移说明: migration.md
+      - 部署发布: deployment.md
+      - 改版蓝图: blueprint.md
 
 markdown_extensions:
   - admonition
   - attr_list
   - def_list
   - footnotes
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
   - tables
   - toc:
       permalink: true

@@ -31,6 +31,8 @@ def _find_standard_name(names: Iterable[str], standard_name: str) -> Optional[st
     for original_name in names:
         lowered_name = original_name.lower()
         for candidate in candidates:
+            if len(candidate) <= 1:
+                continue
             if candidate in lowered_name:
                 return original_name
     return None
@@ -53,29 +55,85 @@ def rename_standard_coordinates(data: XarrayLike) -> XarrayLike:
 
 def infer_variable_name(dataset: xr.Dataset) -> str:
     """Infer the main scientific variable from a dataset."""
-    candidates = [name for name in dataset.data_vars if name.lower() not in {"info", "nmiss"}]
+    candidates = [
+        name
+        for name in dataset.data_vars
+        if name.lower() not in {"info", "nmiss", "time_bnds", "time_bounds", "lat_bnds", "lon_bnds"}
+        and not name.lower().endswith("_bnds")
+        and not name.lower().endswith("_bounds")
+    ]
     if not candidates:
         raise InvalidDataArrayError("No scientific data variable could be inferred from the dataset.")
     return candidates[0]
+
+
+def squeeze_singleton_extra_dims(data: xr.DataArray) -> xr.DataArray:
+    """Drop singleton non-spatiotemporal dimensions such as ``level=850``."""
+    squeeze_dims = {
+        dim: 0
+        for dim, size in data.sizes.items()
+        if dim not in {"time", "lat", "lon"} and int(size) == 1
+    }
+    if squeeze_dims:
+        data = data.isel(squeeze_dims, drop=True)
+    return data
+
+
+def _inherit_dataset_attrs(data: xr.DataArray, dataset: xr.Dataset) -> xr.DataArray:
+    """Copy a small set of useful dataset-level metadata onto one DataArray."""
+    inherited_keys = ("units", "long_name", "standard_name", "valid_range", "actual_range")
+    merged_attrs = dict(data.attrs)
+    for key in inherited_keys:
+        if key not in merged_attrs and key in dataset.attrs:
+            merged_attrs[key] = dataset.attrs[key]
+    data = data.copy()
+    data.attrs = merged_attrs
+    return data
+
+
+def _mask_out_of_valid_range(data: xr.DataArray) -> xr.DataArray:
+    """Mask values outside a declared physical valid range when available."""
+    valid_range = data.attrs.get("valid_range", None)
+    if valid_range is None:
+        return data
+
+    try:
+        bounds = np.asarray(valid_range, dtype=float).ravel()
+    except Exception:
+        return data
+    if bounds.size < 2 or not np.all(np.isfinite(bounds[:2])):
+        return data
+
+    lower, upper = float(bounds[0]), float(bounds[1])
+    if lower > upper:
+        lower, upper = upper, lower
+    return data.where((data >= lower) & (data <= upper))
 
 
 def to_dataarray(data: XarrayLike, variable: Optional[str] = None) -> xr.DataArray:
     """Convert a Dataset/DataArray input into a DataArray."""
     standardized = rename_standard_coordinates(data)
     if isinstance(standardized, xr.DataArray):
-        return standardized
+        return _mask_out_of_valid_range(squeeze_singleton_extra_dims(standardized))
     variable_name = variable or infer_variable_name(standardized)
-    return standardized[variable_name]
+    array = squeeze_singleton_extra_dims(standardized[variable_name])
+    array = _inherit_dataset_attrs(array, standardized)
+    return _mask_out_of_valid_range(array)
 
 
 def ensure_time_lat_lon(data: xr.DataArray) -> xr.DataArray:
     """Validate and reorder a DataArray to ``(time, lat, lon)``."""
-    standardized = rename_standard_coordinates(data)
+    standardized = squeeze_singleton_extra_dims(rename_standard_coordinates(data))
     required = ("time", "lat", "lon")
     missing = [dim for dim in required if dim not in standardized.dims]
     if missing:
         raise InvalidDataArrayError(
             f"Input data must contain dimensions {required}; missing {missing!r}."
+        )
+    extra = [dim for dim in standardized.dims if dim not in required]
+    if extra:
+        raise InvalidDataArrayError(
+            f"Input data must be reducible to dimensions {required}; found extra dimensions {extra!r}."
         )
     return standardized.transpose("time", "lat", "lon")
 
@@ -215,7 +273,9 @@ def save_dataarray(data: xr.DataArray, path: PathLike) -> Path:
     """Save a DataArray and return the resolved output path."""
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    data.to_netcdf(output_path)
+    clean = data.copy()
+    clean.attrs = {key: value for key, value in clean.attrs.items() if value is not None}
+    clean.to_netcdf(output_path)
     return output_path
 
 
@@ -223,7 +283,13 @@ def save_dataset(dataset: xr.Dataset, path: PathLike) -> Path:
     """Save a Dataset and return the resolved output path."""
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    dataset.to_netcdf(output_path)
+    clean = dataset.copy()
+    clean.attrs = {key: value for key, value in clean.attrs.items() if value is not None}
+    for variable_name in clean.data_vars:
+        clean[variable_name].attrs = {
+            key: value for key, value in clean[variable_name].attrs.items() if value is not None
+        }
+    clean.to_netcdf(output_path)
     return output_path
 
 

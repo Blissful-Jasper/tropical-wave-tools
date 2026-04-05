@@ -7,6 +7,8 @@ source "${SCRIPT_DIR}/_env.sh"
 
 MANAGER=""
 MODE="build"
+HOST="${TWAVE_DOCS_HOST:-127.0.0.1}"
+PORT="${TWAVE_DOCS_PORT:-8000}"
 
 print_usage() {
   cat <<'EOF'
@@ -14,6 +16,8 @@ Usage: bash scripts/build_docs.sh [options] [build|serve|gh-deploy]
 
 Options:
   --manager <mamba|conda>  Use a specific environment manager.
+  --host <hostname>        Host for `mkdocs serve` (default: 127.0.0.1).
+  --port <port>            Preferred port for `mkdocs serve` (default: 8000).
   -h, --help               Show this help message.
 EOF
 }
@@ -22,6 +26,14 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --manager)
       MANAGER="${2:-}"
+      shift 2
+      ;;
+    --host)
+      HOST="${2:-}"
+      shift 2
+      ;;
+    --port)
+      PORT="${2:-}"
       shift 2
       ;;
     build|serve|gh-deploy)
@@ -68,11 +80,15 @@ case "${MODE}" in
     fi
     ;;
   serve)
-    echo "[twave-docs] Starting local MkDocs server"
+    SELECTED_PORT="$(twave_pick_open_port "${PORT}" "${HOST}")"
+    if [[ "${SELECTED_PORT}" != "${PORT}" ]]; then
+      echo "[twave-docs] Port ${PORT} is busy; using ${SELECTED_PORT} instead"
+    fi
+    echo "[twave-docs] Starting local MkDocs server at http://${HOST}:${SELECTED_PORT}"
     if twave_env_exists "${MANAGER}"; then
-      twave_run_in_env_live "${MANAGER}" python -m mkdocs serve
+      twave_run_in_env_live "${MANAGER}" python -m mkdocs serve -a "${HOST}:${SELECTED_PORT}"
     else
-      twave_run_fallback_module mkdocs serve
+      twave_run_fallback_module mkdocs serve -a "${HOST}:${SELECTED_PORT}"
     fi
     ;;
   gh-deploy)

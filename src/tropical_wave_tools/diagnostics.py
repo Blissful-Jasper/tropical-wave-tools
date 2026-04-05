@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import Optional, Tuple
 
 import numpy as np
 import xarray as xr
 
-from tropical_wave_tools.io import standardize_data
+from tropical_wave_tools.io import normalize_longitude, rename_standard_coordinates, standardize_data
 
 CP = 1004.0
 GRAVITY = 9.81
 LATENT_HEAT = 2.5e6
 REFERENCE_TEMPERATURE = 300.0
 EARTH_RADIUS = 6.371e6
+_METPY_FALLBACK_WARNED = False
 
 
 def zonal_mean(data: xr.DataArray, *, dim: str = "lon") -> xr.DataArray:
@@ -53,14 +55,132 @@ def area_weighted_mean(
 
 def compute_dx_dy(lat: xr.DataArray, lon: xr.DataArray) -> Tuple[np.ndarray, np.ndarray]:
     """Compute regular-grid spacing in meters."""
-    lat_rad = np.deg2rad(lat)
-    dlat = np.abs(np.diff(lat.values).mean())
-    dlon = np.abs(np.diff(lon.values).mean())
+    lat_values = np.asarray(lat.values, dtype=float)
+    lon_values = np.asarray(lon.values, dtype=float)
+    lat_rad = np.deg2rad(lat_values)
+    dlat = np.abs(np.diff(lat_values).mean())
+    dlon = np.abs(np.diff(lon_values).mean())
     dy = EARTH_RADIUS * np.deg2rad(dlat)
     dx = EARTH_RADIUS * np.cos(lat_rad) * np.deg2rad(dlon)
-    dx = np.broadcast_to(dx[:, np.newaxis], (len(lat), len(lon)))
-    dy = np.full((len(lat), len(lon)), dy)
+    dx = np.broadcast_to(dx[:, np.newaxis], (len(lat_values), len(lon_values)))
+    dy = np.full((len(lat_values), len(lon_values)), dy)
     return dx, dy
+
+
+def _ensure_lat_lon_layout(data: xr.DataArray) -> xr.DataArray:
+    """Normalize an input field to either ``(lat, lon)`` or ``(time, lat, lon)``."""
+    array = normalize_longitude(rename_standard_coordinates(data), target="0_360")
+    required = {"lat", "lon"}
+    if not required.issubset(array.dims):
+        raise ValueError("Input data must contain lat/lon dimensions.")
+    if "time" in array.dims:
+        return array.transpose("time", "lat", "lon")
+    return array.transpose("lat", "lon")
+
+
+def _finite_difference_divergence(zonal: xr.DataArray, meridional: xr.DataArray) -> xr.DataArray:
+    dx, dy = compute_dx_dy(zonal.lat, zonal.lon)
+    du_dx = xr.DataArray(
+        np.gradient(zonal.values, axis=zonal.get_axis_num("lon")) / dx,
+        coords=zonal.coords,
+        dims=zonal.dims,
+    )
+    dv_dy = xr.DataArray(
+        np.gradient(meridional.values, axis=meridional.get_axis_num("lat")) / dy,
+        coords=meridional.coords,
+        dims=meridional.dims,
+    )
+    return (du_dx + dv_dy).rename("divergence")
+
+
+def _finite_difference_vorticity(zonal: xr.DataArray, meridional: xr.DataArray) -> xr.DataArray:
+    dx, dy = compute_dx_dy(zonal.lat, zonal.lon)
+    dv_dx = xr.DataArray(
+        np.gradient(meridional.values, axis=meridional.get_axis_num("lon")) / dx,
+        coords=meridional.coords,
+        dims=meridional.dims,
+    )
+    du_dy = xr.DataArray(
+        np.gradient(zonal.values, axis=zonal.get_axis_num("lat")) / dy,
+        coords=zonal.coords,
+        dims=zonal.dims,
+    )
+    return (dv_dx - du_dy).rename("relative_vorticity")
+
+
+def _metpy_vector_calculus(
+    zonal: xr.DataArray,
+    meridional: xr.DataArray,
+    *,
+    operation: str,
+) -> xr.DataArray:
+    try:
+        from metpy.calc import divergence as mp_divergence
+        from metpy.calc import lat_lon_grid_deltas, vorticity as mp_vorticity
+        from metpy.units import units
+    except Exception as exc:  # pragma: no cover - depends on optional binary stack
+        raise RuntimeError("MetPy diagnostics are unavailable in this environment.") from exc
+
+    dx, dy = lat_lon_grid_deltas(zonal.lon.values, zonal.lat.values)
+    x_axis = zonal.get_axis_num("lon")
+    y_axis = zonal.get_axis_num("lat")
+    if zonal.ndim == 3:
+        dx = dx[np.newaxis, ...]
+        dy = dy[np.newaxis, ...]
+    wind_units = units(str(zonal.attrs.get("units", "m/s")).replace(" ", ""))
+    zonal_values = np.asarray(zonal.values, dtype=float) * wind_units
+    meridional_values = np.asarray(meridional.values, dtype=float) * wind_units
+
+    if operation == "divergence":
+        values = mp_divergence(zonal_values, meridional_values, dx=dx, dy=dy, x_dim=x_axis, y_dim=y_axis)
+        name = "divergence"
+    elif operation == "vorticity":
+        values = mp_vorticity(zonal_values, meridional_values, dx=dx, dy=dy, x_dim=x_axis, y_dim=y_axis)
+        name = "relative_vorticity"
+    else:
+        raise ValueError("`operation` must be 'divergence' or 'vorticity'.")
+
+    return xr.DataArray(
+        values.to("s^-1").magnitude,
+        coords=zonal.coords,
+        dims=zonal.dims,
+        name=name,
+        attrs={"units": "s^-1", "method": "metpy"},
+    )
+
+
+def horizontal_divergence(zonal_wind: xr.DataArray, meridional_wind: xr.DataArray) -> xr.DataArray:
+    """Compute horizontal wind divergence on a regular lat-lon grid."""
+    zonal = _ensure_lat_lon_layout(zonal_wind)
+    meridional = _ensure_lat_lon_layout(meridional_wind)
+    zonal, meridional = xr.align(zonal, meridional, join="exact")
+    try:
+        return _metpy_vector_calculus(zonal, meridional, operation="divergence")
+    except RuntimeError as exc:
+        global _METPY_FALLBACK_WARNED
+        if not _METPY_FALLBACK_WARNED:
+            warnings.warn(f"{exc} Falling back to centered finite differences.", RuntimeWarning, stacklevel=2)
+            _METPY_FALLBACK_WARNED = True
+        return _finite_difference_divergence(zonal, meridional).assign_attrs(
+            {"units": "s^-1", "method": "finite-difference-fallback"}
+        )
+
+
+def relative_vorticity(zonal_wind: xr.DataArray, meridional_wind: xr.DataArray) -> xr.DataArray:
+    """Compute relative vorticity on a regular lat-lon grid."""
+    zonal = _ensure_lat_lon_layout(zonal_wind)
+    meridional = _ensure_lat_lon_layout(meridional_wind)
+    zonal, meridional = xr.align(zonal, meridional, join="exact")
+    try:
+        return _metpy_vector_calculus(zonal, meridional, operation="vorticity")
+    except RuntimeError as exc:
+        global _METPY_FALLBACK_WARNED
+        if not _METPY_FALLBACK_WARNED:
+            warnings.warn(f"{exc} Falling back to centered finite differences.", RuntimeWarning, stacklevel=2)
+            _METPY_FALLBACK_WARNED = True
+        return _finite_difference_vorticity(zonal, meridional).assign_attrs(
+            {"units": "s^-1", "method": "finite-difference-fallback"}
+        )
 
 
 def calc_dse(temperature: xr.DataArray, geopotential_height: xr.DataArray) -> xr.DataArray:
@@ -151,7 +271,9 @@ __all__ = [
     "calc_horizontal_gms",
     "calc_vertical_gms",
     "compute_dx_dy",
+    "horizontal_divergence",
     "meridional_mean",
+    "relative_vorticity",
     "vertically_integrated_moist_flux_divergence",
     "zonal_mean",
 ]

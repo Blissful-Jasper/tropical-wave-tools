@@ -18,3 +18,10 @@ def test_normalize_longitude_converts_negative_longitudes(synthetic_wave_data: x
     assert float(normalized.lon.min()) >= 0.0
     assert float(normalized.lon.max()) <= 360.0
 
+
+def test_standardize_data_squeezes_singleton_level_dimension(
+    synthetic_wave_data: xr.DataArray,
+) -> None:
+    with_level = synthetic_wave_data.expand_dims(level=[850.0]).transpose("time", "level", "lat", "lon")
+    standardized = standardize_data(with_level)
+    assert standardized.dims == ("time", "lat", "lon")

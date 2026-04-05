@@ -16,6 +16,7 @@ env/
 .DS_Store
 .idea/
 .vscode/
+.codex
 
 # Build artifacts
 build/
@@ -31,6 +32,7 @@ tmp/
 # Local data copies
 data/local/*.nc
 data/local/*.zarr
+data/*.pdf
 
 # Streamlit and notebook caches
 .streamlit/

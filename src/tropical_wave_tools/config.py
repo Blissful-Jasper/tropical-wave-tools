@@ -59,9 +59,13 @@ class WaveSpec:
 DEFAULT_WAVE_SPECS: Dict[str, WaveSpec] = {
     "kelvin": WaveSpec((3.0, 20.0), (2, 14), (8.0, 90.0), None, "kelvin"),
     "er": WaveSpec((9.0, 72.0), (-10, -1), (8.0, 90.0), 1, "er"),
-    "mrg": WaveSpec((3.0, 10.0), (-10, -1), (8.0, 90.0), 0, "eig0_mrg"),
-    "ig": WaveSpec((1.0, 14.0), (1, 5), (8.0, 90.0), 1, "ig"),
+    # Synoptic gravity-wave boxes follow Mayta et al. (2024), summarizing the
+    # Kiladis et al. (2009, 2016) frequency-wavenumber filters.
+    "mrg": WaveSpec((2.5, 10.0), (-10, -1), (8.0, 90.0), 0, "eig0_mrg"),
+    "eig": WaveSpec((1.0, 6.0), (0, 15), (12.0, 50.0), 0, "eig0_mrg"),
+    "ig": WaveSpec((1.0, 6.0), (0, 15), (12.0, 50.0), 0, "eig0_mrg"),
+    "wig": WaveSpec((1.25, 3.5), (-15, -1), (12.0, 90.0), 1, "ig"),
     "td": WaveSpec((2.5, 5.0), (-20, -6), (None, None), None, "none"),
     "mjo": WaveSpec((20.0, 100.0), (1, 5), (None, None), None, "none"),
-    "eig0": WaveSpec((None, 1.0 / 0.55), (0, 15), (12.0, 50.0), 0, "eig0_mrg"),
+    "eig0": WaveSpec((1.0, 6.0), (0, 15), (12.0, 50.0), 0, "eig0_mrg"),
 }

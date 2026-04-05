@@ -1,61 +1,66 @@
 # 项目结构
-
-推荐目录树如下：
+## 当前结构
 
 ```text
 tropical-wave-tools/
-├── .github/
-│   ├── ISSUE_TEMPLATE/
-│   └── workflows/
+├── apps/                  # Streamlit 交互演示
+├── data/
+│   ├── local/             # 本地大文件缓存
+│   └── samples/
+├── docs/                  # 当前文档站点
+├── examples/              # 最小可运行示例
+├── scripts/               # 数据准备、建站、发布脚本
+├── src/tropical_wave_tools/
+│   ├── io.py
+│   ├── preprocess.py
+│   ├── spectral.py
+│   ├── filters.py
+│   ├── stats.py
+│   ├── plotting.py
+│   ├── workflows.py
+│   └── ...
+└── tests/
+```
+
+## 推荐结构
+
+```text
+tropical-wave-tools/
 ├── apps/
-│   └── streamlit_app.py
 ├── data/
 │   ├── local/
 │   └── samples/
 ├── docs/
-│   ├── assets/
-│   ├── examples.md
+│   ├── assets/            # 首页和 gallery 结果图
+│   ├── api/               # API 总览与旗舰函数页
+│   ├── gallery/           # 展示型案例页
+│   ├── notes/             # 研究笔记入口与模板
+│   ├── theory/            # 方法原理与流程说明
+│   ├── stylesheets/
+│   ├── blueprint.md       # 总体改版蓝图
 │   ├── getting-started.md
 │   ├── index.md
-│   ├── migration.md
-│   └── deployment.md
+│   └── ...
 ├── examples/
+│   ├── quickstart/        # 极短示例
+│   ├── workflows/         # 端到端工作流示例
+│   └── figure_recipes/    # 单图类型示例
+├── notebooks/
+│   ├── tutorials/
+│   └── case-studies/
+├── notes/
+│   ├── research/
+│   ├── methods/
+│   └── implementation/
 ├── scripts/
-├── src/
-│   └── tropical_wave_tools/
-│       ├── __init__.py
-│       ├── cli.py
-│       ├── config.py
-│       ├── easyxp.py
-│       ├── exceptions.py
-│       ├── filters.py
-│       ├── diagnostics.py
-│       ├── io.py
-│       ├── matsuno.py
-│       ├── plotting.py
-│       ├── preprocess.py
-│       ├── preprocessing.py
-│       ├── sample_data.py
-│       ├── spectral.py
-│       ├── stats.py
-│       ├── workflows.py
-│       └── data/
+├── src/tropical_wave_tools/
+│   ├── io.py
+│   ├── preprocess.py
+│   ├── spectral.py
+│   ├── filters.py
+│   ├── stats.py
+│   ├── plotting.py
+│   ├── workflows.py
+│   └── ...
 └── tests/
 ```
-
-## 每个目录的职责
-
-- `src/tropical_wave_tools/`
-  核心可发布包
-- `tests/`
-  核心行为测试
-- `examples/`
-  最小可运行示例
-- `scripts/`
-  数据准备和画廊生成脚本
-- `docs/`
-  GitHub Pages 文档站点
-- `apps/`
-  轻量交互演示
-- `data/local/`
-  本地大文件缓存，不进入 Git

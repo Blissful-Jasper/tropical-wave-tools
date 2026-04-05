@@ -17,3 +17,15 @@ def test_cli_wk_parser() -> None:
     assert args.command == "wk-spectrum"
     assert args.var == "olr"
 
+
+def test_cli_local_wave_atlas_parser() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "local-wave-atlas",
+            "--output-dir",
+            "outputs/local_atlas",
+        ]
+    )
+    assert args.command == "local-wave-atlas"
+    assert args.olr.endswith("olr.day.mean.nc")
