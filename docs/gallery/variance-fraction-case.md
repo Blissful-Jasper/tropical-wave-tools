@@ -4,7 +4,13 @@
 
 <img src="../../assets/case05_regional_variance_cycle.png" alt="Regional seasonal variance-fraction cycle of Kelvin, ER, MRG and TD waves from GPCP precipitation">
 
-这两张图对应 Lubis and Jacobi (2015) 的季节方差占比视角，使用 `GPCP` 日降水来衡量不同波段对降水变率的贡献。纵轴是 `variance contribution [%]`，因此读图时重点是比较不同波型的季节峰值和区域差异，而不是比较绝对降水强度。`Kelvin`、`ER`、`MRG` 和 `TD-type` 的季节峰值不一定出现在同一个月份；区域图还能帮助区分 Africa、Indian Ocean、Maritime Continent、West Pacific、East Pacific、America 和 Atlantic 哪些区域更容易受特定波段调制。
+改图复现 Lubis and Jacobi (2015) 的季节方差占比，使用 `GPCP` 日降水来衡量不同波段对降水变率的贡献。
+
+- 纵轴是 `variance contribution [%]`，因此读图时重点是比较不同波型的季节峰值和区域差异，而不是比较绝对降水强度。
+
+- `Kelvin`、`ER`、`MRG` 和 `TD-type` 的季节峰值不一定出现在同一个月份；
+
+- 区域图还能帮助区分 Africa、Indian Ocean、Maritime Continent、West Pacific、East Pacific、America 和 Atlantic 哪些区域更容易受特定波段调制。
 
 ## Minimal Code
 

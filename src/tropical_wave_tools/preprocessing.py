@@ -64,8 +64,8 @@ def decompose_symmetric_antisymmetric(
     """Return the symmetric and antisymmetric meridional components."""
     lat_axis = data.get_axis_num("lat")
     flipped = np.flip(data.values, axis=lat_axis)
-    symmetric = 0.5 * (data.values - flipped)
-    antisymmetric = 0.5 * (data.values + flipped)
+    symmetric = 0.5 * (data.values + flipped)
+    antisymmetric = 0.5 * (data.values - flipped)
     symmetric_da = xr.DataArray(symmetric, dims=data.dims, coords=data.coords, attrs=data.attrs)
     antisymmetric_da = xr.DataArray(
         antisymmetric, dims=data.dims, coords=data.coords, attrs=data.attrs
@@ -87,11 +87,11 @@ def build_wk_decomposition_layout(data: xr.DataArray) -> xr.DataArray:
     half = data.sizes["lat"] // 2
 
     if data.sizes["lat"] % 2 == 0:
-        result.values[:, :half, :] = symmetric.values[:, :half, :]
-        result.values[:, half:, :] = antisymmetric.values[:, half:, :]
+        result.values[:, :half, :] = antisymmetric.values[:, :half, :]
+        result.values[:, half:, :] = symmetric.values[:, half:, :]
     else:
-        result.values[:, :half, :] = symmetric.values[:, :half, :]
-        result.values[:, half + 1 :, :] = antisymmetric.values[:, half + 1 :, :]
+        result.values[:, :half, :] = antisymmetric.values[:, :half, :]
+        result.values[:, half + 1 :, :] = symmetric.values[:, half + 1 :, :]
         result.values[:, half, :] = symmetric.values[:, half, :]
 
     return result

@@ -4,7 +4,13 @@
 
 <img src="../../assets/multiwave_seasonal_longitude_olr_westward.png" alt="Westward synoptic seasonal longitude evolution across waves">
 
-这两张图强调不同波型活动中心随月份和经度的迁移。读图时可以比较：`Kelvin` 和 `MJO` 的活动带是否沿赤道呈现更宽的季节性东移或西移；`MRG` 与 `TD` 是否在西太平洋和季风区显示更明显的夏秋峰值；`ER` 是否表现为偏低频、偏离赤道的西传背景。它们更适合回答“哪一类波在什么季节、什么经向带最活跃”这一类问题。
+### 不同波型活动中心随月份和经度的演变
+
+- `Kelvin` 和 `MJO` 的活动带是否沿赤道呈现更宽的季节性东移或西移；
+- `MRG` 与 `TD` 是否在西太平洋和季风区显示更明显的夏秋峰值；
+- `ER` 是否表现为偏低频、偏离赤道的西传背景。
+
+它们更适合回答“哪一类波在什么季节、什么经向带最活跃”这一类问题。
 
 ## Minimal Code
 

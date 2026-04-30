@@ -6,22 +6,29 @@ repo_name: Blissful-Jasper/tropical-wave-tools
 theme:
   name: material
   language: zh
+  palette:
+    - scheme: default
+      primary: teal
+      accent: light blue
+  font:
+    text: IBM Plex Sans
+    code: IBM Plex Mono
   features:
     - navigation.top
-    - navigation.tabs
     - navigation.sections
     - content.code.copy
+    - search.highlight
 
 extra_css:
   - stylesheets/extra.css
 
 nav:
   - 首页: index.md
-  - Quick Start: getting-started.md
-  - User Guide: user-guide.md
-  - Gallery:
-      - Gallery 总览: examples.md
-      - Built-in OLR Showcase: gallery/olr-showcase.md
+  - 快速开始: getting-started.md
+  - 使用指南: user-guide.md
+  - 案例:
+      - 总览: examples.md
+      - OLR Showcase: gallery/olr-showcase.md
       - Case 01: gallery/sample-preview.md
       - Case 02: gallery/wk-spectrum-case.md
       - Case 03: gallery/kelvin-hovmoller-case.md
@@ -33,9 +40,9 @@ nav:
       - Case 09: gallery/seasonal-trend-case.md
       - Case 10: gallery/paper-hovmoller-case.md
   - API:
-      - 模块总览: api/index.md
-      - 函数展示模板: api/function-template.md
-  - Methods & Notes:
+      - 总览: api/index.md
+      - 函数模板: api/function-template.md
+  - 方法与笔记:
       - 方法总览: theory/index.md
       - WK 与波动诊断流程: theory/wk-diagnostics.md
       - Notes 总览: notes/index.md

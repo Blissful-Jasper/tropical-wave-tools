@@ -45,7 +45,18 @@ def _load_gallery_data(*, time_range: tuple[str, str], lat_range: tuple[float, f
         )
 
     data = open_example_olr()
-    return data.sel(time=slice(*time_range), lat=slice(*lat_range))
+    subset = data.sel(time=slice(*time_range), lat=slice(*lat_range))
+    if subset.sizes.get("time", 0) > 0:
+        return subset
+
+    sample_start = str(data.time.values[0])[:10]
+    sample_end = str(data.time.values[-1])[:10]
+    print(
+        "[twave-docs] Packaged sample does not cover "
+        f"{time_range[0]} to {time_range[1]}; using available sample range "
+        f"{sample_start} to {sample_end}."
+    )
+    return data.sel(lat=slice(*lat_range))
 
 
 def _copy_if_exists(source: Path, target: Path) -> None:
@@ -132,8 +143,10 @@ def _cleanup_stale_assets(docs_assets: Path) -> None:
             asset_path.unlink(missing_ok=True)
 
 
-def _time_range_label(time_range: tuple[str, str]) -> str:
-    return f"{time_range[0][:4]}-{time_range[1][:4]}"
+def _data_time_range_label(data) -> str:
+    start_year = str(data.time.values[0])[:4]
+    end_year = str(data.time.values[-1])[:4]
+    return start_year if start_year == end_year else f"{start_year}-{end_year}"
 
 
 def _copy_asset_specs(source_root: Path, docs_assets: Path, asset_specs: tuple[tuple[str, str], ...]) -> None:
@@ -155,16 +168,17 @@ def main() -> None:
     data = _load_gallery_data(time_range=overview_range, lat_range=(-90.0, 90.0))
     plot_latlon_field(
         data.mean("time"),
-        title=f"Mean OLR over {_time_range_label(overview_range)}",
+        title=f"Mean OLR over {_data_time_range_label(data)}",
         cmap="Spectral_r",
         integer_colorbar=True,
+        levels=21,
         save_path=docs_assets / "sample_mean_field.png",
     )
 
     anomaly = compute_anomaly(data, group="month")
     plot_latlon_field(
         standard_deviation(anomaly, dim="time"),
-        title=f"Monthly-anomaly standard deviation ({_time_range_label(overview_range)})",
+        title=f"Monthly-anomaly standard deviation ({_data_time_range_label(data)})",
         cmap="magma",
         integer_colorbar=True,
         zero_floor_colorbar=True,
@@ -174,7 +188,7 @@ def main() -> None:
     spectral_source = _load_gallery_data(time_range=overview_range)
     result = analyze_wk_spectrum(
         spectral_source,
-        config=SpectralConfig(window_size_days=128, window_skip_days=32),
+        config=SpectralConfig(),
     )
     figure, _ = plot_wk_spectrum(result, save_path=docs_assets / "wk_spectrum.png")
     plt.close(figure)

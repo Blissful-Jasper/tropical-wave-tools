@@ -49,6 +49,17 @@ class WKAnalysisResult:
         )
 
 
+def _window_starts(total_samples: int, window_samples: int, step_samples: int) -> list[int]:
+    """Return segment starts for one WK spectrum calculation."""
+    if window_samples <= 0:
+        raise ValueError("`window_size_days` must resolve to a positive sample count.")
+    if step_samples <= 0:
+        raise ValueError("`window_skip_days` must resolve to a positive segment step.")
+    if total_samples < window_samples:
+        return []
+    return list(range(0, total_samples - window_samples + 1, step_samples))
+
+
 class WKSpectralAnalysis:
     """Stateful WK analysis pipeline mirroring the original project."""
 
@@ -108,32 +119,29 @@ class WKSpectralAnalysis:
         n_day_win = self.config.window_size_days
         n_day_skip = self.config.window_skip_days
         n_samp_win = int(n_day_win * spd)
-        n_samp_skip = int(n_day_skip * spd)
+        n_samp_step = int(n_day_skip * spd)
 
         if ntim < n_samp_win:
             raise ValueError(
                 f"Input time length ({ntim}) is shorter than the analysis window ({n_samp_win})."
             )
 
-        n_window = int((ntim - n_samp_win) / (n_samp_skip + n_samp_win)) + 1
-        if n_window <= 0:
+        window_starts = _window_starts(ntim, n_samp_win, n_samp_step)
+        if not window_starts:
             raise ValueError("No valid analysis windows were found.")
 
         sumpower = np.zeros((n_samp_win, nlat, nlon), dtype=np.float64)
-        start = 0
-        stop = n_samp_win
 
-        for _ in range(n_window):
+        for start in window_starts:
+            stop = start + n_samp_win
             data_window = self.processed_data[start:stop, :, :]
             window_values = signal.detrend(data_window.values, axis=0)
             taper = signal.windows.tukey(n_samp_win, self.config.tukey_alpha, sym=True)
             window_values *= taper[:, np.newaxis, np.newaxis]
             power = fft.fft2(window_values, axes=(0, 2)) / (nlon * n_samp_win)
             sumpower += np.abs(power) ** 2
-            start = stop + n_samp_skip
-            stop = start + n_samp_win
 
-        sumpower /= float(n_window)
+        sumpower /= float(len(window_starts))
 
         if nlon % 2 == 0:
             wavenumber = fft.fftshift(fft.fftfreq(nlon) * nlon)[1:]

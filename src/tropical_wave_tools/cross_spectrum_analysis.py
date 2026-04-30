@@ -104,6 +104,7 @@ def preprocess_data_with_mask(
     mask: Optional[xr.DataArray] = None,
     remove_annual: bool = True,
     fill_value: float = 0.0,
+    samples_per_day: int = 1,
     verbose: bool = True,
 ) -> Tuple[xr.DataArray, xr.DataArray]:
     """Apply masking, NaN cleanup, and optional annual-cycle removal."""
@@ -112,16 +113,17 @@ def preprocess_data_with_mask(
         data2 = data2.groupby("time.dayofyear") - data2.groupby("time.dayofyear").mean()
 
     if mask is not None:
-        mask_float = mask.astype(float)
-        data1 = data1 * mask_float
-        data2 = data2 * mask_float
+        mask1 = mask.astype(bool).broadcast_like(data1).fillna(False)
+        mask2 = mask.astype(bool).broadcast_like(data2).fillna(False)
+        data1 = data1.where(mask1)
+        data2 = data2.where(mask2)
 
     data1 = xr.where(np.isinf(data1), np.nan, data1).fillna(fill_value)
     data2 = xr.where(np.isinf(data2), np.nan, data2).fillna(fill_value)
 
     if remove_annual:
-        data1 = remove_annual_cycle(data1)
-        data2 = remove_annual_cycle(data2)
+        data1 = remove_annual_cycle(data1, spd=samples_per_day)
+        data2 = remove_annual_cycle(data2, spd=samples_per_day)
 
     if verbose:
         print(f"Preprocessed data shapes: {data1.shape}, {data2.shape}")
@@ -144,6 +146,7 @@ def compute_cross_spectrum_for_experiments(
     seg_length: int = 96,
     seg_overlap: int = -65,
     symmetry: str = "symm",
+    samples_per_day: int = 1,
     memory_monitor: Optional[MemoryMonitor] = None,
     verbose: bool = True,
 ) -> Dict[str, Dict[str, object]]:
@@ -157,11 +160,13 @@ def compute_cross_spectrum_for_experiments(
 
         data1_raw = data1_dict[experiment]
         data2_raw = data2_dict[experiment]
-        if mask is not None:
-            data1_raw = data1_raw.where(mask, drop=True)
-            data2_raw = data2_raw.where(mask, drop=True)
-
-        data1_prepped, data2_prepped = preprocess_data_with_mask(data1_raw, data2_raw, mask=None, verbose=verbose)
+        data1_prepped, data2_prepped = preprocess_data_with_mask(
+            data1_raw,
+            data2_raw,
+            mask=mask,
+            samples_per_day=samples_per_day,
+            verbose=verbose,
+        )
         data1_computed, data2_computed = _compute_many(data1_prepped, data2_prepped)
         result = calculate_cross_spectrum(
             data1_computed,
@@ -170,6 +175,7 @@ def compute_cross_spectrum_for_experiments(
             segOverLap=seg_overlap,
             symmetry=symmetry,
             return_xarray=True,
+            samples_per_day=samples_per_day,
         )
         results[str(experiment)] = {
             "STC": result["STC"],
@@ -284,6 +290,7 @@ def analyze_cross_spectrum(
     seg_length: int = 96,
     seg_overlap: int = -65,
     symmetry: str = "symm",
+    samples_per_day: int = 1,
     output_dir: Optional[Union[str, Path]] = None,
     plot_params: Optional[Dict[str, object]] = None,
     verbose: bool = True,
@@ -320,6 +327,7 @@ def analyze_cross_spectrum(
         seg_length=seg_length,
         seg_overlap=seg_overlap,
         symmetry=symmetry,
+        samples_per_day=samples_per_day,
         memory_monitor=memory_monitor,
         verbose=verbose,
     )

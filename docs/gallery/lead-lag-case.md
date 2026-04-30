@@ -6,13 +6,25 @@
 <img src="../../assets/td_lead_lag_evolution.png" alt="TD regional phase evolution">
 <img src="../../assets/mjo_lead_lag_evolution.png" alt="MJO regional phase evolution">
 
-## Physical Meaning
+## Physical explain
+### `Kelvin`
+- 赤道附近负 `OLR` 对流中心的东传，以及与其同步移动的低层纬向风异常。
+- Kelvin 波的典型特征是赤道对称、经向尺度较窄，并以纬向风响应为主（Matsuno, 1966; Kiladis et al., 2009）。
 
-- `Kelvin`: 重点核对赤道附近负 `OLR` 对流中心的东传，以及与其同步移动的低层纬向风异常。Kelvin 波的典型特征是赤道对称、经向尺度较窄，并以纬向风响应为主（Matsuno, 1966; Kiladis et al., 2009）。
-- `ER`: 重点核对离赤道对流中心和低层 Rossby gyres 的西传。`ER` 的相位演变通常表现为赤道两侧更清楚的旋转型环流，并伴随较宽的西传位相窗口（Matsuno, 1966; Kiladis et al., 2009）。
-- `MRG`: 重点核对偏离赤道的反对称对流和低层风旋结构，以及 `4–6 day` 尺度上的快速西传相位。若主要负 `OLR` 中心和对应风场核心向西移动，则与文献中的 `westward phase propagation` 一致（Yang et al., 2007; Lubis and Jacobi, 2015）。
-- `TD`: 重点核对西北太平洋和季风槽附近的西传扰动带，以及活跃中心随时间向西并偏向西北侧延伸的演变。`TD-type` 扰动更适合放在区域尺度背景下理解，而非严格赤道束缚模态（Lubis and Jacobi, 2015; Kiladis et al., 2009）。
-- `MJO`: 重点核对从印度洋向海陆大陆和西太平洋延伸的缓慢东传大尺度包络，以及伴随对流中心演变的低层西风异常与辐合带。MJO 的诊断重点是包络传播和大尺度组织，而不是单一高频位相线（Wheeler and Hendon, 2004; Kiladis et al., 2009）。
+### `ER`
+ 赤道对流中心和低层 Rossby gyres 的西传。
+- `ER` 的相位演变通常表现为赤道两侧更清楚的旋转型环流，并伴随较宽的西传位相窗口（Matsuno, 1966; Kiladis et al., 2009）。
+
+### `MRG`
+- 赤道的反对称对流和低层风结构，以及 `4–6 day` 尺度上的快速西传相位（Yang et al., 2007; Lubis and Jacobi, 2015）。
+
+
+### `TD` 
+- 西北太平洋和季风槽附近的西传扰动带，以及活跃中心随时间向西并偏向西北侧延伸的演变。
+- `TD-type` 扰动更适合放在区域尺度背景下理解，而非严格赤道模态（Lubis and Jacobi, 2015; Kiladis et al., 2009）。
+
+###  `MJO`
+- 从印度洋向海陆大陆和西太平洋延伸的缓慢东传大尺度包络，以及伴随对流中心演变的低层西风异常与辐合带。MJO 的诊断重点是包络传播和大尺度组织，而不是单一高频位相线（Wheeler and Hendon, 2004; Kiladis et al., 2009）。
 
 ## Minimal Code
 

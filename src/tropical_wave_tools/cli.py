@@ -6,11 +6,11 @@ import argparse
 from pathlib import Path
 from typing import Optional, Sequence
 
+from tropical_wave_tools.atlas import DEFAULT_LOCAL_PATHS, generate_local_wave_atlas
 from tropical_wave_tools.filters import filter_wave_signal
 from tropical_wave_tools.io import load_dataarray, save_dataarray
 from tropical_wave_tools.sample_data import get_sample_path
 from tropical_wave_tools.spectral import SpectralConfig
-from tropical_wave_tools.atlas import generate_local_wave_atlas
 from tropical_wave_tools.workflows import (
     analyze_wk_spectrum_from_file,
     compare_filter_spatial_fields,
@@ -67,7 +67,12 @@ def build_parser() -> argparse.ArgumentParser:
     wk_parser.add_argument("--lat-min", type=float, default=-15.0, help="Minimum latitude.")
     wk_parser.add_argument("--lat-max", type=float, default=15.0, help="Maximum latitude.")
     wk_parser.add_argument("--window-days", type=int, default=96, help="Window size in days.")
-    wk_parser.add_argument("--skip-days", type=int, default=30, help="Window skip in days.")
+    wk_parser.add_argument(
+        "--skip-days",
+        type=int,
+        default=30,
+        help="Window advance in days between segment starts (30 days gives about two months overlap for a 96-day window).",
+    )
     wk_parser.add_argument("--output-dir", required=True, help="Output directory.")
 
     filter_parser = subparsers.add_parser("filter-wave", help="Extract one wave signal from a dataset.")
@@ -106,15 +111,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Generate a publication-style OLR/U850/V850 equatorial wave atlas from data/local.",
     )
     atlas_parser.add_argument("--output-dir", required=True, help="Atlas output directory.")
-    atlas_parser.add_argument("--olr", default="data/local/olr.day.mean.nc", help="Local OLR NetCDF file.")
+    atlas_parser.add_argument("--olr", default=str(DEFAULT_LOCAL_PATHS["olr"]), help="Local OLR NetCDF file.")
     atlas_parser.add_argument(
         "--u850",
-        default="data/local/uwnd_850hPa_1979-2024.nc",
+        default=str(DEFAULT_LOCAL_PATHS["u850"]),
         help="Local 850 hPa zonal-wind NetCDF file.",
     )
     atlas_parser.add_argument(
         "--v850",
-        default="data/local/vwnd_850hPa_1979-2024.nc",
+        default=str(DEFAULT_LOCAL_PATHS["v850"]),
         help="Local 850 hPa meridional-wind NetCDF file.",
     )
     atlas_parser.add_argument("--waves", nargs="+", default=None, help="Wave names. Defaults to all supported filters.")

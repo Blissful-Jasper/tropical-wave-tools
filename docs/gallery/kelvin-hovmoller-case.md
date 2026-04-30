@@ -8,7 +8,12 @@
 
 <img src="../../assets/mrg_hovmoller_triptych.png" alt="MRG raw and filtered propagation triptych">
 
-这组三联图把 `原始 OLR 异常`、`滤波 OLR` 和 `滤波 U850` 放在一起，用来检查传播方向、尺度选择和低层风场响应是否一致。读图时的关键特征是：`Kelvin` 和 `MJO` 应表现为东传；`ER` 应表现为较慢的西传；`MRG` 更适合从离赤道纬带平均里读其西传相位，而不是只盯最宽的包络。`U850` 面板主要用于检查滤波后的风场位相是否与对流信号保持连贯。
+## 波动传播特征：
+
+- `Kelvin` 和 `MJO` 应表现为东传；
+- `ER` 应表现为较慢的西传；
+- `MRG` 较快西传；
+- `U850` 主要用于检查滤波后的风场位相是否与对流信号保持连贯。
 
 ## Minimal Code
 

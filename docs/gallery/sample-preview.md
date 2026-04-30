@@ -23,6 +23,7 @@ plot_latlon_field(
     title="Mean OLR over 1979-2014",
     cmap="Spectral_r",
     integer_colorbar=True,
+    
 )
 plot_latlon_field(
     standard_deviation(compute_anomaly(data, group="month"), dim="time"),
