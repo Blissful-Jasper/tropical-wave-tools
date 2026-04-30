@@ -110,6 +110,14 @@ def _mask_out_of_valid_range(data: xr.DataArray) -> xr.DataArray:
     return data.where((data >= lower) & (data <= upper))
 
 
+def _ensure_nonempty(data: xr.DataArray, *, context: str) -> xr.DataArray:
+    """Raise a clear error for zero-sized selections."""
+    empty_dims = [dim for dim, size in data.sizes.items() if int(size) == 0]
+    if empty_dims:
+        raise InvalidDataArrayError(f"{context} is empty after selection; zero-sized dimensions: {empty_dims!r}.")
+    return data
+
+
 def to_dataarray(data: XarrayLike, variable: Optional[str] = None) -> xr.DataArray:
     """Convert a Dataset/DataArray input into a DataArray."""
     standardized = rename_standard_coordinates(data)
@@ -247,11 +255,13 @@ def load_dataarray(
     if time_range is not None:
         data = data.sel(time=slice(*time_range))
 
-    return ensure_time_lat_lon(data)
+    data = ensure_time_lat_lon(data)
+    return _ensure_nonempty(data, context=f"Selected data from {Path(path).name}")
 
 
 def describe_dataarray(data: xr.DataArray) -> Dict[str, object]:
     """Return a compact metadata summary for logging or docs."""
+    data = _ensure_nonempty(data, context="Cannot summarize an empty DataArray")
     summary: Dict[str, object] = {
         "name": data.name,
         "shape": tuple(int(value) for value in data.shape),

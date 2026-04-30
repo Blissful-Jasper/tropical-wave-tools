@@ -52,7 +52,7 @@ def remove_annual_cycle(
     data: Union[xr.DataArray, np.ndarray],
     *,
     spd: int = 1,
-    fCrit: float = 1.0 / 365.0,
+    fCrit: float = 3.0 / 365.0,
 ) -> Union[xr.DataArray, np.ndarray]:
     """Remove linear trend and low-frequency annual-cycle variability."""
     is_xarray = isinstance(data, xr.DataArray)
@@ -100,7 +100,7 @@ def _smooth121_1D(array_in: np.ndarray) -> np.ndarray:
 def _smooth121_frequency(spectra: np.ndarray, freq: np.ndarray) -> np.ndarray:
     """Apply 1-2-1 smoothing along the frequency dimension."""
     _, _, nwave = spectra.shape
-    zero_frequency = np.where(freq == 0)[0]
+    zero_frequency = np.where(np.isclose(freq, 0.0))[0]
     if zero_frequency.size == 0:
         return spectra
 
@@ -140,6 +140,18 @@ def _get_symm_asymm(values: np.ndarray, lat: np.ndarray, mode: str = "symm") -> 
         return component
 
     raise ValueError(f"Invalid mode: {mode}. Must be 'symm' or 'asymm'.")
+
+
+def _segment_starts(ntim: int, seg_len: int, seg_overlap: int) -> list[int]:
+    """Return inclusive segment starts for one cross-spectrum calculation."""
+    if seg_len <= 0:
+        raise ValueError("`segLen` must be a positive integer.")
+    step = seg_len + seg_overlap
+    if step <= 0:
+        raise ValueError("`segOverLap` must leave a positive segment step.")
+    if ntim < seg_len:
+        return []
+    return list(range(0, ntim - seg_len + 1, step))
 
 
 def _cross_spectrum_segment(xx: np.ndarray, yy: np.ndarray) -> np.ndarray:
@@ -221,8 +233,12 @@ def calculate_cross_spectrum(
     return_xarray: bool = True,
     normalize_by_reference: bool = False,
     latent_heat: float = 2.5e6,
+    samples_per_day: int = 1,
 ) -> Dict[str, Union[np.ndarray, xr.DataArray, float]]:
     """Calculate a wavenumber-frequency cross-spectrum."""
+    if samples_per_day <= 0:
+        raise ValueError("`samples_per_day` must be a positive integer.")
+
     is_xarray = isinstance(X, xr.DataArray)
     if is_xarray:
         if not isinstance(Y, xr.DataArray):
@@ -252,16 +268,14 @@ def calculate_cross_spectrum(
     nwave = nlon if nlon % 2 == 1 else nlon + 1
     spectra = np.zeros([8, nfreq, nwave], dtype="double")
     wave = np.arange(-int(nwave / 2), int(nwave / 2) + 1, 1.0)
-    freq = (
-        np.linspace(0, 0.5 * (segLen - 1) / segLen, num=nfreq)
-        if segLen % 2 == 1
-        else np.linspace(0, 0.5, num=nfreq)
-    )
-    zero_frequency = np.where(freq == 0.0)[0]
+    freq = fft.rfftfreq(segLen, d=1.0 / float(samples_per_day))
+    zero_frequency = np.where(np.isclose(freq, 0.0))[0]
 
-    n_segments = 0
-    start = 0
-    while start + segLen <= ntim:
+    segment_starts = _segment_starts(ntim, segLen, segOverLap)
+    if not segment_starts:
+        raise ValueError(f"Input length is too short for cross-spectrum: ntim={ntim}, segLen={segLen}")
+
+    for start in segment_starts:
         stop = start + segLen
         xx = x_component[start:stop, :, :] * window[:, np.newaxis, np.newaxis]
         yy = y_component[start:stop, :, :] * window[:, np.newaxis, np.newaxis]
@@ -269,11 +283,7 @@ def calculate_cross_spectrum(
         spectra_segment[:, zero_frequency, :] = np.nan
         spectra_segment = _smooth121_frequency(spectra_segment, freq)
         spectra = spectra + spectra_segment
-        n_segments += 1
-        start = stop + segOverLap - 1
-
-    if n_segments == 0:
-        raise ValueError(f"Input length is too short for cross-spectrum: ntim={ntim}, segLen={segLen}")
+    n_segments = len(segment_starts)
 
     spectra = spectra / n_segments
     spectra = _compute_coherence_phase(spectra)

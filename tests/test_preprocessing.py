@@ -30,6 +30,56 @@ def test_build_wk_layout_preserves_shape(synthetic_wave_data: xr.DataArray) -> N
     assert layout.dims == synthetic_wave_data.dims
 
 
+def test_decompose_symmetric_antisymmetric_values() -> None:
+    lat = np.array([-10.0, -5.0, 0.0, 5.0, 10.0], dtype=float)
+    lon = np.array([0.0, 90.0], dtype=float)
+    time = np.array(["2000-01-01", "2000-01-02"], dtype="datetime64[ns]")
+
+    symmetric_values = np.array(
+        [
+            [[1.0, 1.0], [2.0, 2.0], [3.0, 3.0], [2.0, 2.0], [1.0, 1.0]],
+            [[1.0, 1.0], [2.0, 2.0], [3.0, 3.0], [2.0, 2.0], [1.0, 1.0]],
+        ]
+    )
+    antisymmetric_values = np.array(
+        [
+            [[-1.0, -1.0], [-2.0, -2.0], [0.0, 0.0], [2.0, 2.0], [1.0, 1.0]],
+            [[-1.0, -1.0], [-2.0, -2.0], [0.0, 0.0], [2.0, 2.0], [1.0, 1.0]],
+        ]
+    )
+
+    symmetric_field = xr.DataArray(
+        symmetric_values,
+        dims=("time", "lat", "lon"),
+        coords={"time": time, "lat": lat, "lon": lon},
+    )
+    antisymmetric_field = xr.DataArray(
+        antisymmetric_values,
+        dims=("time", "lat", "lon"),
+        coords={"time": time, "lat": lat, "lon": lon},
+    )
+
+    symmetric, antisymmetric = decompose_symmetric_antisymmetric(symmetric_field)
+    assert np.allclose(symmetric.values, symmetric_values)
+    assert np.allclose(antisymmetric.values, 0.0)
+
+    symmetric, antisymmetric = decompose_symmetric_antisymmetric(antisymmetric_field)
+    assert np.allclose(symmetric.values, 0.0)
+    assert np.allclose(antisymmetric.values, antisymmetric_values)
+
+
+def test_build_wk_layout_places_components_in_expected_halves() -> None:
+    lat = np.array([-10.0, -5.0, 0.0, 5.0, 10.0], dtype=float)
+    lon = np.array([0.0], dtype=float)
+    time = np.array(["2000-01-01"], dtype="datetime64[ns]")
+    values = np.array([[[1.0], [2.0], [3.0], [2.0], [1.0]]])
+    field = xr.DataArray(values, dims=("time", "lat", "lon"), coords={"time": time, "lat": lat, "lon": lon})
+
+    layout = build_wk_decomposition_layout(field)
+    assert np.allclose(layout.values[:, :2, :], 0.0)
+    assert np.allclose(layout.values[:, 2:, :], values[:, 2:, :])
+
+
 def test_compute_climatology_and_anomaly(synthetic_wave_data: xr.DataArray) -> None:
     climatology = compute_climatology(synthetic_wave_data, group="month")
     anomaly = compute_anomaly(synthetic_wave_data, group="month")

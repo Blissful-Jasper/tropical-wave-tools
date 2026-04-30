@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from tropical_wave_tools.cli import build_parser
 
 
@@ -28,4 +30,5 @@ def test_cli_local_wave_atlas_parser() -> None:
         ]
     )
     assert args.command == "local-wave-atlas"
-    assert args.olr.endswith("olr.day.mean.nc")
+    assert Path(args.olr).is_absolute()
+    assert Path(args.olr).name == "olr.day.mean.nc"

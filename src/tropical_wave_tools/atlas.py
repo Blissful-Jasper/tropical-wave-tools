@@ -41,12 +41,23 @@ from tropical_wave_tools.stats import linear_regression, linear_trend, one_sampl
 
 
 PathLike = Union[str, Path]
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _resolve_local_project_path(path: PathLike) -> Path:
+    """Resolve local-data paths relative to the repository when needed."""
+    candidate = Path(path).expanduser()
+    if candidate.is_absolute():
+        return candidate
+    if candidate.exists():
+        return candidate.resolve()
+    return (_PROJECT_ROOT / candidate).resolve()
 
 DEFAULT_LOCAL_PATHS = {
-    "olr": Path("data/local/olr.day.mean.nc"),
-    "gpcp": Path("data/local/GPCP_data_1997-2020-2.5x2.5_stand.nc"),
-    "u850": Path("data/local/uwnd_850hPa_1979-2024.nc"),
-    "v850": Path("data/local/vwnd_850hPa_1979-2024.nc"),
+    "olr": _resolve_local_project_path("data/local/olr.day.mean.nc"),
+    "gpcp": _resolve_local_project_path("data/local/GPCP_data_1997-2020-2.5x2.5_stand.nc"),
+    "u850": _resolve_local_project_path("data/local/uwnd_850hPa_1979-2024.nc"),
+    "v850": _resolve_local_project_path("data/local/vwnd_850hPa_1979-2024.nc"),
 }
 
 COMPARISON_WAVE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -406,6 +417,9 @@ def load_local_wave_fields(
     lon_range: Optional[Tuple[float, float]] = None,
 ) -> xr.Dataset:
     """Load and align local OLR/U850/V850 datasets on a common grid."""
+    olr_path = _resolve_local_project_path(olr_path)
+    u850_path = _resolve_local_project_path(u850_path)
+    v850_path = _resolve_local_project_path(v850_path)
     olr = load_dataarray(olr_path, variable="olr", time_range=time_range, lat_range=lat_range, lon_range=lon_range)
     u850 = load_dataarray(
         u850_path,
@@ -946,7 +960,7 @@ def _save_wk_triplet(
     """Generate WK spectra for OLR, U850, and V850."""
     spectra_dir = output_root / "spectra"
     spectra_dir.mkdir(parents=True, exist_ok=True)
-    config = spectral_config or SpectralConfig(window_size_days=128, window_skip_days=32)
+    config = spectral_config or SpectralConfig()
 
     for var_name in ("olr", "u850", "v850"):
         result = analyze_wk_spectrum(dataset[var_name].sel(lat=slice(*spectral_lat_range)), config=config)
