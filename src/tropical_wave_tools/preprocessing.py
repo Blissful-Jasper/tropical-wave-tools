@@ -8,6 +8,37 @@ from scipy import fft, signal
 from typing import Tuple
 
 
+def validate_symmetric_latitude_grid(
+    data: xr.DataArray,
+    *,
+    dim: str = "lat",
+    atol: float = 1.0e-6,
+) -> xr.DataArray:
+    """Validate that a latitude grid can support equatorial symmetry decomposition."""
+    if dim not in data.coords:
+        raise ValueError(f"Input data must include a `{dim}` coordinate for symmetry decomposition.")
+    if dim not in data.dims:
+        raise ValueError(f"Input data must include `{dim}` as a dimension for symmetry decomposition.")
+
+    lat_values = np.asarray(data[dim].values, dtype=float)
+    if lat_values.ndim != 1 or lat_values.size < 2:
+        raise ValueError("Latitude coordinate must be one-dimensional and contain at least two points.")
+    if not np.all(np.isfinite(lat_values)):
+        raise ValueError("Latitude coordinate contains non-finite values.")
+    lat_diffs = np.diff(lat_values)
+    if not (np.all(lat_diffs > 0.0) or np.all(lat_diffs < 0.0)):
+        raise ValueError("Latitude coordinate must be strictly monotonic for symmetry decomposition.")
+
+    pair_mismatch = np.abs(lat_values + lat_values[::-1])
+    if not np.all(pair_mismatch <= atol):
+        raise ValueError(
+            "WK symmetric/antisymmetric decomposition requires latitude points "
+            "paired about the equator. Select a symmetric latitude band such as "
+            "(-15, 15) before running the decomposition."
+        )
+    return data
+
+
 def smooth_121(array: np.ndarray) -> np.ndarray:
     """Apply a 1-2-1 smoother while preserving edge length."""
     values = np.asarray(array, dtype=np.float64)
@@ -62,6 +93,7 @@ def decompose_symmetric_antisymmetric(
     data: xr.DataArray,
 ) -> Tuple[xr.DataArray, xr.DataArray]:
     """Return the symmetric and antisymmetric meridional components."""
+    validate_symmetric_latitude_grid(data)
     lat_axis = data.get_axis_num("lat")
     flipped = np.flip(data.values, axis=lat_axis)
     symmetric = 0.5 * (data.values + flipped)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import xarray as xr
 
 from tropical_wave_tools.preprocess import compute_anomaly, compute_climatology, seasonal_mean
@@ -28,6 +29,13 @@ def test_build_wk_layout_preserves_shape(synthetic_wave_data: xr.DataArray) -> N
     layout = build_wk_decomposition_layout(synthetic_wave_data)
     assert layout.shape == synthetic_wave_data.shape
     assert layout.dims == synthetic_wave_data.dims
+
+
+def test_decompose_requires_symmetric_latitude_grid(synthetic_wave_data: xr.DataArray) -> None:
+    asymmetric = synthetic_wave_data.isel(lat=slice(1, None))
+
+    with pytest.raises(ValueError, match="paired about the equator"):
+        decompose_symmetric_antisymmetric(asymmetric)
 
 
 def test_decompose_symmetric_antisymmetric_values() -> None:

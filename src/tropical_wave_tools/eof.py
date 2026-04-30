@@ -207,9 +207,14 @@ class EOFAnalyzer:
             data = data.where(mask.broadcast_like(data))
 
         try:
-            climatology = data.groupby(f"{time_dim}.dayofyear").mean(dim=time_dim)
-            climatology_smoothed = extract_low_harmonics(climatology, n_harm=n_harmonics, dim="dayofyear")
-            anomalies = data.groupby(f"{time_dim}.dayofyear") - climatology_smoothed
+            if n_harmonics <= 0:
+                climatology_smoothed = data.mean(dim=time_dim)
+                climatology = climatology_smoothed
+                anomalies = data - climatology_smoothed
+            else:
+                climatology = data.groupby(f"{time_dim}.dayofyear").mean(dim=time_dim)
+                climatology_smoothed = extract_low_harmonics(climatology, n_harm=n_harmonics, dim="dayofyear")
+                anomalies = data.groupby(f"{time_dim}.dayofyear") - climatology_smoothed
         except Exception:
             climatology = data.mean(dim=time_dim)
             climatology_smoothed = climatology
@@ -507,4 +512,3 @@ __all__ = [
     "align_eof_signs",
     "compare_vertical_eofs",
 ]
-

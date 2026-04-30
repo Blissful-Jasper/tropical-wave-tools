@@ -27,6 +27,19 @@
 | 基础统计 | `standard_deviation`, `variance`, `linear_trend` |
 | 结果展示 | `plot_latlon_field`, `plot_spatial_std_comparison`, `save_figure` |
 
+## 编号方法笔记
+
+如果需要从实现回到数学原理和物理意义，可以按编号查阅：
+
+| 编号 | 主题 |
+|---|---|
+| M01 | [数据标准化与异常场](../notes/method-01-data-standardization.md) |
+| M02 | [Wheeler-Kiladis 频率-波数谱](../notes/method-02-wk-spectrum.md) |
+| M03 | [频率-波数滤波与波段提取](../notes/method-03-wave-filtering.md) |
+| M04 | [Hovmoller、事件识别与滞后合成](../notes/method-04-hovmoller-composite.md) |
+| M05 | [EOF 模态与 PC 回归](../notes/method-05-eof-regression.md) |
+| M06 | [方差、季节循环与风场诊断](../notes/method-06-variance-wind-diagnostics.md) |
+
 
 
 
