@@ -50,6 +50,13 @@
   core functionality.
 
 ### Changed
+- **Phase-speed estimator:** `composite_kw_phase` now estimates `Cp_ave` by following the single
+  strongest crest of the lag-longitude composite from `lon_ref` (`speed_method="ridge"`, new
+  `ridge_window_deg`), instead of one straight line through every point above the threshold. The
+  old fit failed whenever the composite held several crests (a wavenumber-3 wave gave -1.5 m/s for a
+  true +15 m/s) and when the ridge crossed 0/360 within the lag range (22 m/s read as 11.4 m/s). For a
+  single localised ridge both agree to ~1%. The old behaviour stays available as
+  `speed_method="threshold_fit"`. New public helpers: `trace_composite_ridge`, `estimate_phase_speed`.
 - Taper length is now `round(N * fraction) // 2` points per end (NCL rule fixed by the 382-sample
   golden file: 9 points for N=382 at 5%, 5 points for N=96 at 10%). With it all 21 filter
   comparisons (7 bands x 3 inputs, including the `ig0`/`ig1` branches) agree with NCL to ~1e-7.

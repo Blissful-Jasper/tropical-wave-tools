@@ -366,6 +366,98 @@ def lag_composite(
     return np.arange(-nlag, nlag + 1, 1), composite, it_max
 
 
+def trace_composite_ridge(
+    composite: np.ndarray,
+    lags: np.ndarray,
+    lon: np.ndarray,
+    *,
+    lon_ref: float,
+    threshold: float,
+    window_deg: float = 30.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Follow the single strongest crest of a lag-longitude composite outward from ``lon_ref``.
+
+    Starting from the maximum within ``window_deg`` of ``lon_ref`` at lag 0, the crest is followed
+    to larger and smaller lags: at each step the maximum within ``window_deg`` of the position
+    predicted from the previous step is taken, and tracing stops when it falls below ``threshold``.
+    Longitudes are treated as circular and returned unwrapped (continuous). Other simultaneous
+    crests, for example the repeats of a wave with zonal wavenumber 3, are ignored.
+
+    Returns ``(ridge_lags, ridge_lons)``, both empty if lag 0 has no crest above ``threshold``.
+    """
+    lags = np.asarray(lags)
+    lon = np.asarray(lon, dtype=float)
+    centre_index = int(np.argmin(np.abs(lags)))
+
+    def circular_offset(centre: float) -> np.ndarray:
+        return (lon - centre + 180.0) % 360.0 - 180.0
+
+    def peak_near(row: np.ndarray, centre: float) -> tuple[float, float] | None:
+        masked = np.where(np.abs(circular_offset(centre)) <= window_deg, row, np.nan)
+        if not np.isfinite(masked).any():
+            return None
+        index = int(np.nanargmax(masked))
+        if masked[index] < threshold:
+            return None
+        return float(centre + circular_offset(centre)[index]), float(masked[index])
+
+    start = peak_near(composite[centre_index], lon_ref)
+    if start is None:
+        return np.array([], dtype=lags.dtype), np.array([], dtype=float)
+
+    track: dict[int, float] = {centre_index: start[0]}
+    for direction in (+1, -1):
+        previous, shift = start[0], 0.0
+        index = centre_index + direction
+        while 0 <= index < lags.size:
+            found = peak_near(composite[index], previous + shift)
+            if found is None:
+                break
+            shift = found[0] - previous  # longitude change per step, used as the next prediction
+            previous = found[0]
+            track[index] = found[0]
+            index += direction
+    indices = np.array(sorted(track))
+    return lags[indices], np.array([track[i] for i in indices])
+
+
+def estimate_phase_speed(
+    composite: np.ndarray,
+    lags: np.ndarray,
+    lon: np.ndarray,
+    *,
+    lon_ref: float,
+    threshold: float,
+    method: str = "ridge",
+    window_deg: float = 30.0,
+    min_points: int = 3,
+) -> float:
+    """Zonal phase speed (m/s, positive eastward) of a lag-longitude composite, NaN if undefined.
+
+    ``method="ridge"`` fits a straight line to the crest followed by :func:`trace_composite_ridge`
+    and is reliable when the composite holds several simultaneous crests. ``method="threshold_fit"``
+    is the historical estimator: one straight line through *all* points above ``threshold``, which
+    is only meaningful for a single propagating ridge. Lags are in days (one step = one day).
+    """
+    lags = np.asarray(lags, dtype=float)
+    lon = np.asarray(lon, dtype=float)
+    if method == "ridge":
+        ridge_lags, ridge_lons = trace_composite_ridge(
+            composite, lags, lon, lon_ref=lon_ref, threshold=threshold, window_deg=window_deg
+        )
+        if ridge_lags.size < min_points:
+            return float("nan")
+        slope = np.polyfit(ridge_lags.astype(float), ridge_lons, deg=1)[0]
+    elif method == "threshold_fit":
+        strong = np.argwhere(composite >= threshold)
+        if strong.shape[0] < 2:
+            return float("nan")
+        slope = np.polyfit(lags[strong[:, 0]], lon[strong[:, 1]], deg=1)[0]
+    else:
+        raise ValueError("`method` must be 'ridge' or 'threshold_fit'.")
+    return float(slope * 111000.0 / (24 * 3600.0))
+
+
 def save_composite_to_netcdf(
     output_path: str,
     pr_ano_comp: np.ndarray,
@@ -409,15 +501,19 @@ def composite_kw_phase(
     debug_plot: bool = False,
     to_mm_per_day: float | None = None,
     strong_threshold: float = 1.5,
+    speed_method: str = "ridge",
+    ridge_window_deg: float = 30.0,
 ) -> None:
     """Run a Kelvin-wave phase-composite workflow and save its products.
 
     ``to_mm_per_day`` converts the filtered field to mm/day for the phase-speed fit; the default
     (``None``) keeps the historical behaviour of 86400 (kg m-2 s-1 input) except for
     ``model_name == "GPCP"``, which is assumed to be in mm/day already. Points of the lag-longitude
-    composite above ``strong_threshold`` (mm/day) are fitted with one straight line to estimate the
-    phase speed ``Cp_ave``. That estimate assumes a single propagating ridge (a localised event
-    composite); a field with several simultaneous crests gives a meaningless slope.
+    composite above ``strong_threshold`` (mm/day) are used to estimate the phase speed ``Cp_ave``
+    with :func:`estimate_phase_speed`. The default ``speed_method="ridge"`` follows the single
+    strongest crest from ``lon_ref`` (``ridge_window_deg`` per step) and is robust to several
+    simultaneous crests; ``"threshold_fit"`` is the historical straight-line fit through all points
+    above the threshold, meaningful only for one propagating ridge.
     """
     import os
 
@@ -457,19 +553,22 @@ def composite_kw_phase(
     factor = to_mm_per_day if to_mm_per_day is not None else (1.0 if model_name == "GPCP" else 86400.0)
     pr_kw_plot = pr_kw_comp * factor
 
-    strong_points = np.where(pr_kw_plot >= strong_threshold, pr_kw_plot, np.nan)
-    strong_index = np.argwhere(~np.isnan(strong_points))
-    if strong_index.size == 0:
+    phase_speed = estimate_phase_speed(
+        pr_kw_plot,
+        tlag,
+        lon,
+        lon_ref=lon_ref,
+        threshold=strong_threshold,
+        method=speed_method,
+        window_deg=ridge_window_deg,
+    )
+    if not np.isfinite(phase_speed):
         return
-
-    x_values = tlag[strong_index[:, 0]]
-    y_values = lon[strong_index[:, 1]]
-    slope, _ = np.polyfit(x_values, y_values, deg=1)
-    phase_speed = slope * 111000.0 / (24 * 3600.0)
 
     np.savez(
         os.path.join(output_dir, f"{model_name}_kw_zwnum_freq_Cp_ave_from_precip_lag_regression_history_{lon_ref}.npz"),
         Cp_ave=phase_speed,
+        speed_method=speed_method,
     )
 
     if debug_plot:
@@ -485,6 +584,7 @@ __all__ = [
     "butter_lowpass_filter",
     "calculate_kelvin_phase",
     "composite_kw_phase",
+    "estimate_phase_speed",
     "find_local_extrema",
     "find_peak_influence_range",
     "lag_composite",
@@ -495,4 +595,5 @@ __all__ = [
     "remove_10d_from_daily_data",
     "remove_clm",
     "save_composite_to_netcdf",
+    "trace_composite_ridge",
 ]

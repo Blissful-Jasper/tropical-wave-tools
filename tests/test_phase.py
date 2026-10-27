@@ -227,3 +227,90 @@ def test_composite_workflow_recovers_the_phase_speed_of_a_wave_packet(tmp_path) 
     speed_file = next(name for name in os.listdir(tmp_path) if "Cp_ave" in name)
     estimated = float(np.load(tmp_path / speed_file)["Cp_ave"])
     assert estimated == pytest.approx(speed, rel=0.05)
+
+
+# ---------------------------------------------------------------------------
+# Phase-speed estimator
+# ---------------------------------------------------------------------------
+def _ridge_composite(speed_ms: float, wavenumber: int, *, amplitude: float = 4.0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Lag-longitude composite of eastward crests moving at ``speed_ms`` through lon_ref = 180."""
+    lags = np.arange(-10, 11)
+    lon = np.arange(72) * 5.0
+    deg_per_day = speed_ms * 86400 / 111000.0
+    field = amplitude * np.cos(2 * np.pi * wavenumber * (lon[None, :] - 180.0 - deg_per_day * lags[:, None]) / 360.0)
+    return field, lags, lon
+
+
+@pytest.mark.parametrize("speed", [8.0, 15.0, 22.0])
+def test_ridge_estimator_recovers_the_speed_of_a_single_ridge(speed: float) -> None:
+    composite, lags, lon = _ridge_composite(speed, wavenumber=1)
+    estimate = phase_module.estimate_phase_speed(composite, lags, lon, lon_ref=180.0, threshold=1.5, method="ridge")
+    assert estimate == pytest.approx(speed, rel=0.05)
+
+
+@pytest.mark.parametrize(("speed", "legacy_ok"), [(8.0, True), (15.0, True), (22.0, False)])
+def test_threshold_fit_is_only_valid_while_the_ridge_stays_inside_the_longitude_range(
+    speed: float, legacy_ok: bool
+) -> None:
+    """At 22 m/s the ridge crosses 0/360 within +-10 days and the straight-line fit is cut in two."""
+    composite, lags, lon = _ridge_composite(speed, wavenumber=1)
+    legacy = phase_module.estimate_phase_speed(
+        composite, lags, lon, lon_ref=180.0, threshold=1.5, method="threshold_fit"
+    )
+    assert (abs(legacy - speed) < 0.05 * speed) is legacy_ok
+
+
+def test_ridge_estimator_survives_several_simultaneous_crests() -> None:
+    """Wavenumber 3 gives three crests at every lag; one straight line through all of them is useless."""
+    composite, lags, lon = _ridge_composite(15.0, wavenumber=3)
+    ridge = phase_module.estimate_phase_speed(composite, lags, lon, lon_ref=180.0, threshold=1.5, method="ridge")
+    legacy = phase_module.estimate_phase_speed(
+        composite, lags, lon, lon_ref=180.0, threshold=1.5, method="threshold_fit"
+    )
+    assert ridge == pytest.approx(15.0, rel=0.05)
+    assert abs(legacy - 15.0) > 5.0  # the historical estimator fails here (it returned -1.5 m/s)
+
+
+def test_ridge_tracking_is_circular_and_stops_below_the_threshold() -> None:
+    composite, lags, lon = _ridge_composite(15.0, wavenumber=1)
+    ridge_lags, ridge_lons = phase_module.trace_composite_ridge(composite, lags, lon, lon_ref=180.0, threshold=1.5)
+    assert ridge_lags.tolist() == lags.tolist()  # the whole lag range is followed
+    assert np.all(np.diff(ridge_lons) > 0)  # unwrapped: continuous eastward drift, no 360 degree jumps
+    ridge_lags, _ = phase_module.trace_composite_ridge(composite, lags, lon, lon_ref=180.0, threshold=10.0)
+    assert ridge_lags.size == 0
+    assert np.isnan(phase_module.estimate_phase_speed(composite, lags, lon, lon_ref=180.0, threshold=10.0))
+    with pytest.raises(ValueError, match="method"):
+        phase_module.estimate_phase_speed(composite, lags, lon, lon_ref=180.0, threshold=1.5, method="magic")
+
+
+def test_workflow_recovers_the_speed_of_a_global_wavenumber_three_wave(tmp_path) -> None:
+    """The case that gave -1.5 m/s (true +15 m/s) with the straight-line estimator."""
+    import os
+
+    lat = np.arange(-15, 15.1, 2.5)
+    lon = np.arange(72) * 5.0
+    nt, speed, wavenumber = 720, 15.0, 3
+    speed_deg_day = speed * 86400 / 111000.0
+    period = 360.0 / (wavenumber * speed_deg_day)
+    t = np.arange(nt)[:, None, None]
+    kelvin = (
+        6.0
+        / 86400
+        * np.exp(-((lat / 8.0) ** 2))[None, :, None]
+        * np.cos(2 * np.pi * (wavenumber * lon[None, None, :] / 360 - t / period))
+    )
+    coords = {"time": pd.date_range("2000-01-01", periods=nt), "lat": lat, "lon": lon}
+    wrap = lambda a: xr.DataArray(a, dims=("time", "lat", "lon"), coords=coords)  # noqa: E731
+    rng = np.random.default_rng(1)
+    precipitation = wrap(3.0 / 86400 + kelvin + 0.5 / 86400 * rng.standard_normal(kelvin.shape))
+
+    estimates = {}
+    for method in ("ridge", "threshold_fit"):
+        directory = tmp_path / method
+        phase_module.composite_kw_phase(
+            wrap(kelvin), precipitation, lon, "TEST", str(directory), lon_ref=180.0, nlag=10, speed_method=method
+        )
+        speed_file = next(name for name in os.listdir(directory) if "Cp_ave" in name)
+        estimates[method] = float(np.load(directory / speed_file)["Cp_ave"])
+    assert estimates["ridge"] == pytest.approx(speed, rel=0.05)
+    assert abs(estimates["threshold_fit"] - speed) > 5.0
