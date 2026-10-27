@@ -46,13 +46,15 @@ def nint(value: float) -> int:
 def split_cosine_bell(length: int, fraction: float = 0.05) -> np.ndarray:
     """Split-cosine-bell taper as used by NCL (``fraction`` of the series tapered in total).
 
-    ``fraction / 2`` of the series is tapered at each end with weights
-    ``0.5 * (1 - cos(pi * (i + 0.5) / m))`` for ``i = 0..m-1``. This is *not* identical to
-    ``scipy.signal.windows.tukey`` (end-point convention), which gives ~1% differences
-    in filtered fields and spectra when compared with NCL.
+    The tapered count ``nint(length * fraction)`` is split evenly (integer division) between the
+    two ends, and each end gets weights ``0.5 * (1 - cos(pi * (i + 0.5) / m))`` for
+    ``i = 0..m-1``. The rounding order matters: NCL uses 9 points for 382 samples at 5% and
+    5 points for 96 samples at 10%, which ``nint(length * fraction / 2)`` would get wrong.
+    This is also *not* identical to ``scipy.signal.windows.tukey`` (end-point convention),
+    which differs from NCL by ~1% in filtered fields and spectra.
     """
     window = np.ones(length)
-    m = nint(length * fraction / 2.0)
+    m = nint(length * fraction) // 2
     if m > 0:
         ramp = 0.5 * (1.0 - np.cos(np.pi * (np.arange(m) + 0.5) / m))
         window[:m] = ramp

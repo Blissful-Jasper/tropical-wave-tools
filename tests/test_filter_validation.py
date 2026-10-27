@@ -148,3 +148,15 @@ def test_period_cutoff_excludes_bins_outside_the_band() -> None:
     spectrum = np.abs(np.fft.rfft(y, axis=0))
     assert spectrum[3].max() < 1e-8 * spectrum.max()
     assert spectrum[4].max() > 1e-3 * spectrum.max()  # in-band neighbour is retained
+
+
+@pytest.mark.parametrize(
+    ("length", "fraction", "points"),
+    [(360, 0.05, 9), (365, 0.05, 9), (382, 0.05, 9), (96, 0.1, 5)],
+)
+def test_split_cosine_bell_length_matches_ncl(length: int, fraction: float, points: int) -> None:
+    """Taper lengths fixed by NCL output (kf_filter and wkSpaceTime golden files)."""
+    from tropical_wave_tools.filters import split_cosine_bell
+
+    window = split_cosine_bell(length, fraction)
+    assert np.count_nonzero(window < 1.0) == points * 2

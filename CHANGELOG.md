@@ -10,6 +10,9 @@
   core functionality.
 
 ### Changed
+- Taper length is now `round(N * fraction) // 2` points per end (NCL rule fixed by the 382-sample
+  golden file: 9 points for N=382 at 5%, 5 points for N=96 at 10%). With it all 21 filter
+  comparisons (7 bands x 3 inputs, including the `ig0`/`ig1` branches) agree with NCL to ~1e-7.
 - **Behaviour change:** `SpectralConfig.window_skip_days` now follows NCL `wkSpaceTime`
   (`nDaySkip`): the gap between windows, negative = overlap, so starts are
   `window_size_days + window_skip_days` apart. The default changes from `30` (a 30-day step)
