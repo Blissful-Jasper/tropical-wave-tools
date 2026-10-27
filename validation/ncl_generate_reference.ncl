@@ -18,6 +18,9 @@
 load "$NCARG_ROOT/lib/ncarg/nclscripts/contrib/kf_filter.ncl"
 
 begin
+  ; filter_input.nc has an int64 time coordinate, which the default classic netCDF output rejects
+  setfileoption("nc", "Format", "NetCDF4")
+
   wave_env = getenv("WAVES")
   if (ismissing(wave_env)) then
     wave_env = "kelvin"
