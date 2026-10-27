@@ -17,20 +17,26 @@
     验证过程中发现：当经度轴含循环点时，旧版 `_kf_filter` 在错误的长度上做逆变换，
     输出被打乱（对 Kelvin 平面波 RMS 误差约 1.0，与信号同量级）。现已修复，并有回归测试。
 
-## 与 NCL `kf_filter` 的对比
+## 与 NCL `kf_filter` 的对比（黄金文件）
 
-本仓库**没有**随附 NCL 输出，也没有在无 NCL 的环境里声称"与 NCL 逐点一致"。
-实现遵循 NCL 版本的算法（线性去趋势 → 5% Tukey 窗 → 2-D FFT → 频率-波数矩形盒 →
-由等效深度确定的色散曲线截断 → 逆变换），但是否数值一致需要用 NCL 实测确认：
+本仓库**还没有**随附 NCL 输出，因此目前不能声称"与 NCL 逐点一致"。流程如下：
+
+- 输入是固定种子的随机数据（白噪声 + 4 个已知 `k`、周期的平面波）和打包的 1979 年 OLR 赤道子集，各约 0.5 MB，已提交到 `validation/`。
+- 在有 NCL 的机器上运行一次，生成"黄金文件"并提交；之后 `pytest` 只读取它们，**不需要安装 NCL**。
 
 ```bash
-python validation/make_input.py                  # 生成共同输入 validation/input_equator.nc
-ncl validation/ncl_generate_reference.ncl        # 需要本地 NCL 与 kf_filter.ncl
-python validation/compare_with_ncl.py            # 输出 corr / NRMSE / 振幅比
-pytest tests/test_ncl_reference.py               # 存在参考文件时自动执行
+python validation/make_input.py             # 重新生成输入（仅在需要时）
+ncl validation/ncl_generate_reference.ncl   # 需要 NCL 与 kf_filter.ncl，输出 validation/reference/ncl_*.nc
+python validation/compare_with_ncl.py       # 逐波段输出 corr / NRMSE / 振幅比
+pytest tests/test_ncl_reference.py          # 存在黄金文件时自动执行
 ```
 
-默认阈值：相关系数 ≥ 0.999，归一化 RMSE ≤ 0.05。若某个波段不达标，优先检查：
+!!! warning "NCL 脚本尚待核对"
+    `ncl_generate_reference.ncl` 中 `kf_filter` 的参数顺序、"不使用"的哨兵值和 `waveName`
+    取值需要对照 [NCL 官方文档](https://www.ncl.ucar.edu/Document/Functions/User_contributed/kf_filter.shtml)
+    确认后再信任对比结果。
+
+默认阈值：相关系数 ≥ 0.9999，归一化 RMSE ≤ 0.01，拿到实测结果后再收紧。若某个波段不达标，优先检查：
 
 1. NCL `kf_filter` 的参数顺序与 `waveName` 命名；
 2. 色散关系取整方式（`floor`/`ceil`）与边界是否含端点；
