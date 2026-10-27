@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Fixed
+- Monthly-RMS significance (`compute_monthly_climatology_and_significance` and its longitude-mean
+  variant, now one shared implementation): the annual mean used for the anomalies included partial
+  first/last years, shifting the t-test (p = 0.028 vs 0.016 for a record starting in July). Only
+  complete 12-month years enter the annual mean now; the climatology still uses every month.
 - Atlas latitude selections (`equatorial_mean`, `wave_longitude_projection`, Hovmoller and Case 05/10
   bands, spectral band) used `sel(lat=slice(lo, hi))`, which is empty on a *descending* latitude axis
   (the usual ERA5 layout): every equatorial mean became NaN, event detection silently returned zero
@@ -68,6 +72,13 @@
   matrix with coverage, and a documentation build on every pull request.
 
 ### Added
+- Case 10 outputs (`shading`, `contours`) now carry `long_name`, `predictor`, `units` ("per standard
+  deviation") and `lag_convention` attributes. The predictor is the *filtered OLR* at the base point
+  (+1 sigma = suppressed convection) while the shading is the convective proxy (-OLR), so the shading
+  is negative at the base point at lag 0 and the contours are positive.
+- Checks for variance fractions (known ratios, hand-computed area weighting incl. longitude ranges that
+  wrap through 0), the monthly t-test (against scipy), and the Case 10 pipeline (against
+  `scipy.stats.linregress` on the active samples, propagation direction and speed).
 - `lagged_composite` returns the number of events behind each lag as the `n_events` coordinate
   (events whose shifted index leaves the record are dropped per lag, so the set shrinks at large lags).
 - Event-detection checks: known sinusoids, sub-daily sampling, descending latitude, NaN gaps, composite
