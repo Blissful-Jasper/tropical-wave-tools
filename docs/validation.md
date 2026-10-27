@@ -56,21 +56,41 @@ pytest tests/test_ncl_reference.py          # 存在黄金文件时自动执行
 头部说明，MJO/TD 这类无色散曲线的波段把 `hMin`/`hMax` 设为**缺失值**，`MRG` 与 `IG0` 是同一分支。
 详见 `validation/README_ncl.md`。
 
-WK 频谱使用同样的思路：`ncl validation/ncl_wkspacetime.ncl` 在种子数据 `validation/wk_input.nc`
-上调用 `wkSpaceTime`；谱数组是否写成 netCDF 取决于 NCL 版本，需要先运行并查看 `validation/wk_out/`。
+## WK 频谱与 NCL `wkSpaceTime` 的对比
+
+`ncl validation/ncl_wkspacetime.ncl` 在种子数据 `validation/wk_input.nc`（384 天 × 13 纬度 × 72 经度）
+上调用 `wkSpaceTime`，谱以 netCDF 保存在 `validation/wk_ref/`；`python validation/compare_wk_with_ncl.py`
+逐字段对比 `FIG_1_SYM/ASYM`（log10 的对称/反对称功率）、`FIG_3_BACK`（背景谱）和
+`FIG_3_SYM/ASYM`（功率与背景之比）。
+
+| 窗口设置 | 对比结果（log10 均方根差 / 比值均方根差） |
+| --- | --- |
+| `nDaySkip=30`（窗口起点相距 126 天，共 3 个窗口） | 全部字段 ≲ 3e-7，最大 1.6e-6 |
+| `nDaySkip=-60`（起点相距 36 天，共 9 个窗口） | 中位数 ≲ 4e-6，均方根 3e-4 – 1e-3 |
+
+排查中发现并修复了四处差异（修复前原始谱均方根差约 0.09，即 20% 量级）：
+
+1. **窗口间隔语义**：NCL 的 `nDaySkip` 是窗口之间的**间隔**，负值表示重叠，相邻窗口起点相距 `nDayWin + nDaySkip`；
+   旧实现把 `window_skip_days` 当作起点步长。现已按 NCL 的语义实现，默认值改为 `-60`（WK99：96 天窗口重叠 60 天）。
+   原来的 `30`（步长 30 天）等价于现在的 `-66`。
+2. **时间窗**：与滤波相同，NCL 使用分裂余弦钟形窗（窗口长度的 10%），不是 Tukey 窗。
+3. **原始谱的频率平滑**：NCL 对原始对称/反对称谱做一次 1-2-1 频率平滑（不含零频与 Nyquist 行，端点复制），
+   旧实现没有平滑，谱峰在频率方向没有按 ¼–½–¼ 展开。
+4. **频率轴与背景平滑**：NCL 的频率轴包含 Nyquist（0.5 cpd）；背景谱平滑把 NaN 的零频行排除在外
+   （旧实现用插值把它卷进平滑，影响最低几个频率行）。
+
+!!! note "尚未解释的残差"
+    重叠窗口（`nDaySkip=-60`）的结果仍有一点差异，且集中在最低的非零频率格点（周期等于窗口长度）。
+    逐个替换单个窗口的预处理都无法消除，原因尚未确定；该情形的容差因此放宽到 3e-3。
 
 ## 待核实
 
 - **分裂余弦窗的点数取整**：已有数据（N=360、365）下 `floor` 与 `round` 无法区分；
   `validation/odd_input.nc`（N=382，`m=9.55`）专门用来判定，需要用 NCL 重新生成该输入的参考文件。
 - **`eig`（NCL `ig0`）与 `wig`（NCL `ig1`）两个分支**尚未与 NCL 对比，已加入 `WAVES` 列表。
-- **窗口间隔语义**：NCL `wkSpaceTime` 的 `nDaySkip` 文档说明是"窗口之间的间隔，负值表示重叠"，
-  即相邻窗口起点相距 `nDayWin + nDaySkip`；而 `_window_starts` 把 `window_skip_days` 当作起点步长。
-  默认 `96/30` 在 NCL 下是相距 126 天，在本实现里是相距 30 天。
-  两种取法都可能被使用，但需要明确，并在文档里标注对应关系（NCL 的 WK99 设置对应 `nDaySkip=-60`）。
+- 上面"尚未解释的残差"。
 
 ## 尚未覆盖
 
-- WK 背景谱平滑与 NCL `wkSpaceTime` 的逐点对照；
 - 与 Wheeler & Kiladis (1999) 原文图的定量对比；
 - 非整数天采样（`obs_per_day > 1`）的专项检验。
