@@ -1,6 +1,8 @@
 """Write the seeded random inputs shared by the NCL and Python runs.
 
 ``filter_input.nc``  (time, lat, lon): white noise plus a few injected plane waves.
+``odd_input.nc``     (382 days): same recipe as ``filter_input.nc``; 382 * 0.05 / 2 = 9.55 makes
+                     "round" and "truncate" of the taper length differ (9 vs 10 points).
 ``real_input.nc``    (time, lat, lon): the packaged 1979 OLR sample, equatorial rows.
 ``wk_input.nc``      (time, lat, lon), variable ``olr``: seeded noise + waves on the
                      15S-15N grid, shaped like the input of ``wk_time4.ncl`` (no missing values).
@@ -24,11 +26,11 @@ SEED = 20240601
 NT, LATS, NLON = 360, (-5.0, 0.0, 5.0), 72
 
 
-def synthetic_filter_input() -> xr.DataArray:
-    rng = np.random.default_rng(SEED)
+def synthetic_filter_input(nt: int = NT, seed: int = SEED) -> xr.DataArray:
+    rng = np.random.default_rng(seed)
     lon = np.arange(NLON) * 360.0 / NLON
-    t = np.arange(NT)[:, None, None]
-    x = rng.standard_normal((NT, len(LATS), NLON))
+    t = np.arange(nt)[:, None, None]
+    x = rng.standard_normal((nt, len(LATS), NLON))
     # (k, period in days); k > 0 propagates eastward
     for k, period, amp in [(5, 8.0, 2.0), (-3, 20.0, 2.0), (2, 40.0, 2.0), (-10, 4.0, 2.0)]:
         x += amp * np.cos(2 * np.pi * (k * lon[None, None, :] / 360.0 - t / period))
@@ -36,7 +38,7 @@ def synthetic_filter_input() -> xr.DataArray:
         x,
         dims=("time", "lat", "lon"),
         coords={
-            "time": pd.date_range("2000-01-01", periods=NT, freq="D"),
+            "time": pd.date_range("2000-01-01", periods=nt, freq="D"),
             "lat": list(LATS),
             "lon": lon,
         },
@@ -77,6 +79,7 @@ def real_input() -> xr.DataArray:
 def main() -> None:
     jobs = (
         ("filter_input.nc", synthetic_filter_input()),
+        ("odd_input.nc", synthetic_filter_input(382, SEED + 2)),
         ("real_input.nc", real_input()),
         ("wk_input.nc", synthetic_wk_input()),
     )

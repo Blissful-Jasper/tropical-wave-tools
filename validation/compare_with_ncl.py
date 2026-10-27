@@ -17,10 +17,10 @@ from tropical_wave_tools.filters import WaveFilter
 
 HERE = Path(__file__).resolve().parent
 REFERENCE_DIR = HERE / "reference"
-INPUTS = {"filter": "filter_input.nc", "real": "real_input.nc"}
-# Start loose, tighten once the observed agreement is known.
-MIN_CORR = 0.9999
-MAX_NRMSE = 0.01
+INPUTS = {"filter": "filter_input.nc", "odd": "odd_input.nc", "real": "real_input.nc"}
+# NCL output is single precision, so agreement is ~1e-7; leave headroom for platform differences.
+MIN_CORR = 0.9999999
+MAX_NRMSE = 1e-5
 
 
 def python_filter(wave: str, x: xr.DataArray) -> np.ndarray:
@@ -70,7 +70,7 @@ def main() -> int:
         print("No golden files in validation/reference; see ncl_generate_reference.ncl.")
         return 2
     failed = False
-    print(f"{'input':8s} {'wave':8s} {'corr':>9s} {'nrmse':>9s} {'amp':>8s}")
+    print(f"{'input':8s} {'wave':8s} {'1-corr':>9s} {'nrmse':>9s} {'amp':>8s}")
     for path in files:
         source, wave = split_name(path)
         x = xr.open_dataarray(HERE / INPUTS[source])
@@ -78,7 +78,7 @@ def main() -> int:
         ok = stats["corr"] >= MIN_CORR and stats["nrmse"] <= MAX_NRMSE
         failed |= not ok
         print(
-            f"{source:8s} {wave:8s} {stats['corr']:9.6f} {stats['nrmse']:9.6f} "
+            f"{source:8s} {wave:8s} {1 - stats['corr']:9.2e} {stats['nrmse']:9.2e} "
             f"{stats['amp_ratio']:8.5f}  {'OK' if ok else 'FAIL'}"
         )
     return int(failed)

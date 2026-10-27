@@ -15,6 +15,28 @@ from tropical_wave_tools.io import load_dataarray
 from tropical_wave_tools.preprocessing import extract_low_harmonics
 
 
+def _nint(value: float) -> int:
+    """Round half up, like NCL's ``round``/``nint`` (``np.round`` rounds half to even)."""
+    return int(np.floor(value + 0.5))
+
+
+def split_cosine_bell(length: int, fraction: float = 0.05) -> np.ndarray:
+    """Split-cosine-bell taper as used by NCL ``kf_filter`` (``fraction`` tapered in total).
+
+    ``fraction / 2`` of the series is tapered at each end with weights
+    ``0.5 * (1 - cos(pi * (i + 0.5) / m))`` for ``i = 0..m-1``. This is *not* identical to
+    ``scipy.signal.windows.tukey`` (end-point convention), which gives ~1% differences
+    in the filtered field.
+    """
+    window = np.ones(length)
+    m = _nint(length * fraction / 2.0)
+    if m > 0:
+        ramp = 0.5 * (1.0 - np.cos(np.pi * (np.arange(m) + 0.5) / m))
+        window[:m] = ramp
+        window[length - m :] = ramp[::-1]
+    return window
+
+
 class WaveFilter:
     """Legacy-style WK filter for extracting equatorial wave signals."""
 
@@ -101,7 +123,7 @@ class WaveFilter:
             data_np = data_np[:, 1:]
 
         data_np = signal.detrend(data_np, axis=0)
-        data_np = signal.windows.tukey(time_dim, alpha=0.05)[:, np.newaxis] * data_np
+        data_np = split_cosine_bell(time_dim, 0.05)[:, np.newaxis] * data_np
 
         fft_data = fft.rfft2(data_np, axes=(1, 0))
         fft_data[:, 1:] = fft_data[:, -1:0:-1]
@@ -112,8 +134,10 @@ class WaveFilter:
 
         freq_dim = fft_data.shape[0]
         k_dim = fft_data.shape[1]
-        j_min = int(time_dim / (period_max * obs_per_day)) if period_max else 0
-        j_max = int(time_dim / (period_min * obs_per_day)) if period_min else freq_dim
+        # NCL rounds the period cut-offs to the nearest frequency index; truncating (int) keeps a
+        # bin whose period lies outside [period_min, period_max].
+        j_min = _nint(time_dim / (period_max * obs_per_day)) if period_max else 0
+        j_max = _nint(time_dim / (period_min * obs_per_day)) if period_min else freq_dim
         j_max = min(j_max, freq_dim)
 
         i_min = max(k_dim + k_min, k_dim // 2) if k_min < 0 else min(k_min, k_dim // 2)

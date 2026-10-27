@@ -7,7 +7,7 @@ are committed.
 git clone -b claude/funny-hypatia-27mxnd https://github.com/Blissful-Jasper/tropical-wave-tools.git
 cd tropical-wave-tools
 bash validation/run_ncl_reference.sh                    # Kelvin only
-WAVES=kelvin,er,mrg,mjo,td bash validation/run_ncl_reference.sh   # all bands
+WAVES=kelvin,er,mrg,mjo,td,eig,wig bash validation/run_ncl_reference.sh   # all bands
 ```
 
 This writes `validation/reference/ncl_<input>_<wave>.nc`. Then either

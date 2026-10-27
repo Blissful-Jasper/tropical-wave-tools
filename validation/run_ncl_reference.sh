@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # NCL half of the filter cross-check. Needs only NCL (the seeded inputs are committed).
 #   bash validation/run_ncl_reference.sh                        # Kelvin only
-#   WAVES=kelvin,er,mrg,mjo,td bash validation/run_ncl_reference.sh
+#   WAVES=kelvin,er,mrg,mjo,td,eig,wig bash validation/run_ncl_reference.sh
 # Afterwards either run `python validation/compare_with_ncl.py` (needs `pip install -e .`)
 # or just commit validation/reference/*.nc and push.
 set -euo pipefail

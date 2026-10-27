@@ -19,55 +19,55 @@
 
 ## 与 NCL `kf_filter` 的对比（黄金文件）
 
-本仓库**还没有**随附 NCL 输出，因此目前不能声称"与 NCL 逐点一致"。流程如下：
+输入是固定种子的随机数据（白噪声 + 已知 `k`、周期的平面波）和打包的 1979 年 OLR 赤道子集。
+NCL 输出作为"黄金文件"提交在 `validation/reference/`，日常 `pytest` 只读它们，**不需要安装 NCL**。
 
-- 输入是固定种子的随机数据（白噪声 + 4 个已知 `k`、周期的平面波）和打包的 1979 年 OLR 赤道子集，各约 0.5 MB，已提交到 `validation/`。
-- 在有 NCL 的机器上运行一次，生成"黄金文件"并提交；之后 `pytest` 只读取它们，**不需要安装 NCL**。
+### 实测结果
+
+在 NCL 实跑的 Kelvin / ER / MRG / TD / MJO 五个波段 × 两个输入共 10 组上：
+
+| | 修复前 | 修复后 |
+| --- | --- | --- |
+| 相关系数 | 0.947 – 0.99995 | 1 − corr ≲ 1e-14 |
+| 归一化 RMSE | 1% – 34%（真实 OLR 的 MJO 最差） | ≲ 1e-7（NCL 输出为单精度） |
+
+通过逐项排查，确认了两处与 NCL 不同并已修复：
+
+1. **时间窗**：NCL 使用分裂余弦钟形窗（总共 5%，每端 `m = N·0.05/2` 点，权重 `½(1−cos(π(i+½)/m))`），
+   而不是 `scipy` 的 Tukey 窗。两者端点约定不同，造成约 1% 的差异。
+2. **周期截止的频率索引**：NCL 按**四舍五入**取整，旧实现用 `int()` 截断，会多保留（或少保留）
+   一个处在 `[周期下限, 周期上限]` 之外的频率格点。对 365 天序列的 MJO（20–100 天），
+   旧实现多保留了 121.7 天的格点。
+
+色散曲线截止（`floor`/`ceil`）与 NCL 一致，无需修改。其余部分（线性去趋势、帧顺序、色散关系）
+在对比中均吻合。
+
+### 重新生成
 
 在本机（需要 NCL，`kf_filter.ncl` 随 conda 安装的 NCL 自带）：
 
 ```bash
-bash validation/run_ncl_reference.sh                          # 先只跑 Kelvin（调用方式已由实际脚本确认）
-WAVES=kelvin,er,mrg,mjo,td bash validation/run_ncl_reference.sh   # 核对 waveName 与 hMin/hMax 后再跑全部
-```
-
-脚本会重新生成输入、调用 NCL、输出对比表。确认无误后把 `validation/reference/` 下的文件提交。
-`kf_filter` 的调用形式（逐纬度传入 `time×lon`、小写 `waveName`）取自作者现有的 CCKW 生产脚本；
-根据 `kf_filter.ncl` 头部说明，MJO/TD 这类无色散曲线的波段需把 `hMin`/`hMax` 设为**缺失值**（不是 -999），
-`MRG` 与 `IG0` 是同一分支。详见 `validation/README_ncl.md`。
-
-也可以分步运行：
-
-```bash
-python validation/make_input.py             # 重新生成输入（仅在需要时）
-ncl validation/ncl_generate_reference.ncl   # 输出 validation/reference/ncl_*.nc
-python validation/compare_with_ncl.py       # 逐波段输出 corr / NRMSE / 振幅比
+WAVES=kelvin,er,mrg,mjo,td,eig,wig bash validation/run_ncl_reference.sh
+python validation/compare_with_ncl.py       # 逐组输出 1-corr / NRMSE / 振幅比
 pytest tests/test_ncl_reference.py          # 存在黄金文件时自动执行
 ```
 
+调用形式（逐纬度传入 `time×lon`、小写 `waveName`）取自作者现有的 CCKW 生产脚本；根据 `kf_filter.ncl`
+头部说明，MJO/TD 这类无色散曲线的波段把 `hMin`/`hMax` 设为**缺失值**，`MRG` 与 `IG0` 是同一分支。
+详见 `validation/README_ncl.md`。
+
 WK 频谱使用同样的思路：`ncl validation/ncl_wkspacetime.ncl` 在种子数据 `validation/wk_input.nc`
-上调用 `wkSpaceTime`（调用方式沿用 `wk_time4.ncl`）。该过程是否把谱数组写成 netCDF
-取决于 NCL 版本，需要先运行并查看 `validation/wk_out/` 下实际生成的文件，再据此补充对比代码。
+上调用 `wkSpaceTime`；谱数组是否写成 netCDF 取决于 NCL 版本，需要先运行并查看 `validation/wk_out/`。
 
-!!! note "已核对的 NCL 接口"
-    参数顺序、`waveName` 取值与"缺失值表示无色散"均来自实际脚本与 `kf_filter.ncl` 头部；
-    各波段的数值一致性仍待 NCL 实跑确认。
+## 待核实
 
-默认阈值：相关系数 ≥ 0.9999，归一化 RMSE ≤ 0.01，拿到实测结果后再收紧。若某个波段不达标，优先检查：
-
-1. NCL `kf_filter` 的参数顺序与 `waveName` 命名；
-2. 色散关系取整方式（`floor`/`ceil`）与边界是否含端点；
-3. 去趋势与窗函数是否一致。
-
-## 待核实的差异假设
-
-以下是阅读代码时发现、**尚未用 NCL 核实**的点，对比时优先检查：
-
+- **分裂余弦窗的点数取整**：已有数据（N=360、365）下 `floor` 与 `round` 无法区分；
+  `validation/odd_input.nc`（N=382，`m=9.55`）专门用来判定，需要用 NCL 重新生成该输入的参考文件。
+- **`eig`（NCL `ig0`）与 `wig`（NCL `ig1`）两个分支**尚未与 NCL 对比，已加入 `WAVES` 列表。
 - **窗口间隔语义**：NCL `wkSpaceTime` 的 `nDaySkip` 文档说明是"窗口之间的间隔，负值表示重叠"，
   即相邻窗口起点相距 `nDayWin + nDaySkip`；而 `_window_starts` 把 `window_skip_days` 当作起点步长。
   默认 `96/30` 在 NCL 下是相距 126 天，在本实现里是相距 30 天。
   两种取法都可能被使用，但需要明确，并在文档里标注对应关系（NCL 的 WK99 设置对应 `nDaySkip=-60`）。
-- **MRG/IG0 的 `waveName`** 与色散曲线取整、端点是否包含，见上文检查清单。
 
 ## 尚未覆盖
 

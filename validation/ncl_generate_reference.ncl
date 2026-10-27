@@ -13,7 +13,7 @@
 ;
 ; Run from the repository root (see validation/run_ncl_reference.sh):
 ;     WAVES=kelvin ncl validation/ncl_generate_reference.ncl
-;     WAVES=kelvin,er,mrg,mjo,td ncl validation/ncl_generate_reference.ncl
+;     WAVES=kelvin,er,mrg,mjo,td,eig,wig ncl validation/ncl_generate_reference.ncl
 
 load "$NCARG_ROOT/lib/ncarg/nclscripts/contrib/kf_filter.ncl"
 
@@ -23,21 +23,24 @@ begin
     wave_env = "kelvin"
   end if
   waves  = str_split(wave_env, ",")
-  inputs = (/ "filter", "real" /)
+  inputs = (/ "filter", "odd", "real" /)
   obsPerDay = 1
 
-  ; name        tMin  tMax  kMin kMax
-  names = (/ "kelvin", "er", "mrg", "td", "mjo" /)
-  t_min = (/  3,    9,  2.5,  2.5,  20 /)
-  t_max = (/ 20,   72,   10,    5, 100 /)
-  k_min = (/  2,  -10,  -10,  -20,   1 /)
-  k_max = (/ 14,   -1,   -1,   -6,   5 /)
+  ; python name (file names) and the NCL waveName it maps to
+  names     = (/ "kelvin", "er", "mrg", "td", "mjo", "eig", "wig" /)
+  ncl_names = (/ "kelvin", "er", "mrg", "td", "mjo", "ig0", "ig1" /)
+  t_min = (/  3,    9,  2.5,  2.5,  20,  1,  1.25 /)
+  t_max = (/ 20,   72,   10,    5, 100,  6,  3.5  /)
+  k_min = (/  2,  -10,  -10,  -20,   1,  0, -15   /)
+  k_max = (/ 14,   -1,   -1,   -6,   5, 15,  -1   /)
 
   ; equivalent depths; entries left unset stay missing = "no dispersion curve" (td, mjo)
-  h_min = new(5, float)
-  h_max = new(5, float)
+  h_min = new(7, float)
+  h_max = new(7, float)
   h_min(0:2) = (/ 8,  8,  8 /)
   h_max(0:2) = (/ 90, 90, 90 /)
+  h_min(5:6) = (/ 12, 12 /)
+  h_max(5:6) = (/ 50, 90 /)
 
   do s = 0, dimsizes(inputs) - 1
     f = addfile("validation/" + inputs(s) + "_input.nc", "r")
@@ -60,7 +63,7 @@ begin
       do j = 0, nlat - 1
         y(time|:, lat|j, lon|:) = kf_filter(x(time|:, lat|j, lon|:), obsPerDay,   \
                                   t_min(i), t_max(i), k_min(i), k_max(i),          \
-                                  h_min(i), h_max(i), waves(w))
+                                  h_min(i), h_max(i), ncl_names(i))
       end do
       path = "validation/reference/ncl_" + inputs(s) + "_" + waves(w) + ".nc"
       system("rm -f " + path)

@@ -114,3 +114,37 @@ def test_wk_spectrum_peak_sign_convention() -> None:
         peak = power.fillna(0).stack(z=("frequency", "wavenumber")).idxmax("z").item()
         assert peak[0] == pytest.approx(1 / 12.0, abs=1.0 / 96)
         assert peak[1] == k_true
+
+
+def test_split_cosine_bell_matches_ncl_definition() -> None:
+    from tropical_wave_tools.filters import split_cosine_bell
+
+    window = split_cosine_bell(360, 0.05)  # m = 9 points tapered at each end
+    ramp = 0.5 * (1.0 - np.cos(np.pi * (np.arange(9) + 0.5) / 9))
+    np.testing.assert_allclose(window[:9], ramp)
+    np.testing.assert_allclose(window[-9:], ramp[::-1])
+    assert np.all(window[9:-9] == 1.0)
+
+
+def test_period_cutoff_excludes_bins_outside_the_band() -> None:
+    """365 d / 100 d = 3.65 -> bin 4 (91 d); the 121.7 d bin (index 3) must be dropped."""
+    wave_filter = WaveFilter()
+    spec = wave_filter.get_wave_params("mjo")
+    nt = 365
+    t = np.arange(nt)[:, None]
+    lon = np.arange(NLON) * 360.0 / NLON
+    # exactly bin 3 (period 121.7 d), k = 2: outside 20-100 d
+    x = np.cos(2 * np.pi * (2 * lon[None, :] / 360.0 - 3 * t / nt))
+    y = wave_filter._kf_filter(
+        x,
+        lon=lon,
+        obs_per_day=1,
+        period_days=spec.period_days,
+        wavenumber=spec.wavenumber,
+        equivalent_depth=spec.equivalent_depth,
+        wave_name="mjo",
+    )
+    # the taper leaks some energy into neighbouring in-band bins, so inspect bin 3 itself
+    spectrum = np.abs(np.fft.rfft(y, axis=0))
+    assert spectrum[3].max() < 1e-8 * spectrum.max()
+    assert spectrum[4].max() > 1e-3 * spectrum.max()  # in-band neighbour is retained
