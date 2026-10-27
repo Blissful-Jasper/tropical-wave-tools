@@ -11,7 +11,7 @@
 ; Output: validation/reference/ncl_<input>_<wave>.nc  (variable "filtered", dims time/lat/lon)
 
 load "$NCARG_ROOT/lib/ncarg/nclscripts/csm/contributed.ncl"
-loadscript("kf_filter.ncl")        ; user-contributed; put it next to this script or on NCL_PATH
+loadscript("validation/kf_filter.ncl")   ; download from the NCL kf_filter doc page, not committed
 
 inputs = (/ "filter", "real" /)
 obs    = 1                         ; samples per day

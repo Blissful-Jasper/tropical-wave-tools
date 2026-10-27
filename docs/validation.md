@@ -24,12 +24,25 @@
 - 输入是固定种子的随机数据（白噪声 + 4 个已知 `k`、周期的平面波）和打包的 1979 年 OLR 赤道子集，各约 0.5 MB，已提交到 `validation/`。
 - 在有 NCL 的机器上运行一次，生成"黄金文件"并提交；之后 `pytest` 只读取它们，**不需要安装 NCL**。
 
+在本机（需要 NCL）只需三步：
+
+1. 从 NCL 的 [kf_filter 文档页](https://www.ncl.ucar.edu/Document/Functions/User_contributed/kf_filter.shtml)
+   下载 `kf_filter.ncl`，保存为 `validation/kf_filter.ncl`（该文件不提交）。
+2. 运行 `bash validation/run_ncl_reference.sh`：重新生成输入、调用 NCL、输出对比表。
+3. 把 `validation/reference/` 下新生成的文件提交。
+
+也可以分步运行：
+
 ```bash
 python validation/make_input.py             # 重新生成输入（仅在需要时）
-ncl validation/ncl_generate_reference.ncl   # 需要 NCL 与 kf_filter.ncl，输出 validation/reference/ncl_*.nc
+ncl validation/ncl_generate_reference.ncl   # 输出 validation/reference/ncl_*.nc
 python validation/compare_with_ncl.py       # 逐波段输出 corr / NRMSE / 振幅比
 pytest tests/test_ncl_reference.py          # 存在黄金文件时自动执行
 ```
+
+WK 频谱使用同样的思路：`ncl validation/ncl_wkspacetime.ncl` 在种子数据 `validation/wk_input.nc`
+上调用 `wkSpaceTime`（调用方式沿用 `wk_time4.ncl`）。该过程是否把谱数组写成 netCDF
+取决于 NCL 版本，需要先运行并查看 `validation/wk_out/` 下实际生成的文件，再据此补充对比代码。
 
 !!! warning "NCL 脚本尚待核对"
     `ncl_generate_reference.ncl` 中 `kf_filter` 的参数顺序、"不使用"的哨兵值和 `waveName`
@@ -41,6 +54,16 @@ pytest tests/test_ncl_reference.py          # 存在黄金文件时自动执行
 1. NCL `kf_filter` 的参数顺序与 `waveName` 命名；
 2. 色散关系取整方式（`floor`/`ceil`）与边界是否含端点；
 3. 去趋势与窗函数是否一致。
+
+## 待核实的差异假设
+
+以下是阅读代码时发现、**尚未用 NCL 核实**的点，对比时优先检查：
+
+- **窗口间隔语义**：NCL `wkSpaceTime` 的 `nDaySkip` 文档说明是"窗口之间的间隔，负值表示重叠"，
+  即相邻窗口起点相距 `nDayWin + nDaySkip`；而 `_window_starts` 把 `window_skip_days` 当作起点步长。
+  默认 `96/30` 在 NCL 下是相距 126 天，在本实现里是相距 30 天。
+  两种取法都可能被使用，但需要明确，并在文档里标注对应关系（NCL 的 WK99 设置对应 `nDaySkip=-60`）。
+- **MRG/IG0 的 `waveName`** 与色散曲线取整、端点是否包含，见上文检查清单。
 
 ## 尚未覆盖
 

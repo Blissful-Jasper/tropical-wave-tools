@@ -40,3 +40,7 @@ data/*.pdf
 
 
 # Generated validation artifacts
+
+# NCL user-contributed code is not redistributed here
+validation/kf_filter.ncl
+validation/wk_out/
