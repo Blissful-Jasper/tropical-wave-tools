@@ -1,43 +1,68 @@
 ; Generate NCL kf_filter golden files for validation/compare_with_ncl.py.
 ;
-; >>> UNVERIFIED DRAFT <<<
-; The kf_filter call below (argument order, "unused" sentinel values, waveName strings)
-; was written from memory, not from the NCL documentation. Check it against
-;   https://www.ncl.ucar.edu/Document/Functions/User_contributed/kf_filter.shtml
-; and your local kf_filter.ncl before trusting any comparison result.
+; The kf_filter call mirrors a working production script (Xianpu Ji, Dec 2024):
+;   load ".../nclscripts/contrib/kf_filter.ncl"      ; ships with conda-forge NCL
+;   filtered(time|:, lat|y, lon|:) = kf_filter(x(time|:, lat|y, lon|:), obsPerDay,
+;                 period(0), period(1), wavenumber(0), wavenumber(1), depth(0), depth(1), "kelvin")
+; i.e. one (time, lon) slice per latitude and a lower-case waveName.
 ;
-; Run from the repository root after `python validation/make_input.py`:
-;     ncl validation/ncl_generate_reference.ncl
-; Output: validation/reference/ncl_<input>_<wave>.nc  (variable "filtered", dims time/lat/lon)
+; Only the Kelvin parameters have been confirmed against that script. The other bands use the
+; band edges of tropical_wave_tools.config.DEFAULT_WAVE_SPECS; check hMin/hMax and waveName for
+; "mjo"/"td" in your kf_filter.ncl (see validation/README_ncl.md) before enabling them.
+;
+; Run from the repository root (see validation/run_ncl_reference.sh):
+;     WAVES=kelvin ncl validation/ncl_generate_reference.ncl
+;     WAVES=kelvin,er,mrg,mjo,td ncl validation/ncl_generate_reference.ncl
 
-load "$NCARG_ROOT/lib/ncarg/nclscripts/csm/contributed.ncl"
-loadscript("validation/kf_filter.ncl")   ; download from the NCL kf_filter doc page, not committed
+load "$NCARG_ROOT/lib/ncarg/nclscripts/contrib/kf_filter.ncl"
 
-inputs = (/ "filter", "real" /)
-obs    = 1                         ; samples per day
+begin
+  wave_env = getenv("WAVES")
+  if (ismissing(wave_env)) then
+    wave_env = "kelvin"
+  end if
+  waves  = str_split(wave_env, ",")
+  inputs = (/ "filter", "real" /)
+  obsPerDay = 1
 
-; python wave name, tMin, tMax, kMin, kMax, hMin, hMax, NCL waveName
-waves  = (/ "kelvin", "er", "mrg", "td", "mjo" /)
-t_min  = (/  3.0,   9.0,  2.5,  2.5,  20.0 /)
-t_max  = (/ 20.0,  72.0, 10.0,  5.0, 100.0 /)
-k_min  = (/  2,   -10,   -10,  -20,    1 /)
-k_max  = (/ 14,    -1,    -1,   -6,    5 /)
-h_min  = (/  8.0,   8.0,  8.0, -999., -999. /)
-h_max  = (/ 90.0,  90.0, 90.0, -999., -999. /)
-n_name = (/ "Kelvin", "ER", "MRG", "none", "none" /)   ; TODO verify names for TD / MJO
+  ; name        tMin  tMax  kMin kMax  hMin   hMax
+  names = (/ "kelvin", "er", "mrg", "td", "mjo" /)
+  t_min = (/  3,    9,  2.5,  2.5,  20 /)
+  t_max = (/ 20,   72,   10,    5, 100 /)
+  k_min = (/  2,  -10,  -10,  -20,   1 /)
+  k_max = (/ 14,   -1,   -1,   -6,   5 /)
+  h_min = (/  8,    8,    8, -999, -999 /)   ; TODO verify the "no dispersion" value for td/mjo
+  h_max = (/ 90,   90,   90, -999, -999 /)
 
-do s = 0, dimsizes(inputs) - 1
-  f = addfile("validation/" + inputs(s) + "_input.nc", "r")
-  x = f->x                                    ; (time, lat, lon)
-  do i = 0, dimsizes(waves) - 1
-    y = x
-    do j = 0, dimsizes(x&lat) - 1             ; filter one latitude row at a time
-      y(:, j, :) = (/ kf_filter(x(:, j, :), obs, t_min(i), t_max(i), \
-                                k_min(i), k_max(i), h_min(i), h_max(i), n_name(i)) /)
+  do s = 0, dimsizes(inputs) - 1
+    f = addfile("validation/" + inputs(s) + "_input.nc", "r")
+    x = f->x                                   ; (time, lat, lon)
+    nlat = dimsizes(x&lat)
+
+    do w = 0, dimsizes(waves) - 1
+      i = ind(names .eq. waves(w))
+      if (ismissing(i)) then
+        print("unknown wave: " + waves(w))
+        exit
+      end if
+      y = new(dimsizes(x), float)
+      y!0 = "time"
+      y!1 = "lat"
+      y!2 = "lon"
+      do j = 0, nlat - 1
+        y(time|:, lat|j, lon|:) = kf_filter(x(time|:, lat|j, lon|:), obsPerDay,   \
+                                  t_min(i), t_max(i), k_min(i), k_max(i),          \
+                                  h_min(i), h_max(i), waves(w))
+      end do
+      path = "validation/reference/ncl_" + inputs(s) + "_" + waves(w) + ".nc"
+      system("rm -f " + path)
+      g = addfile(path, "c")
+      g->filtered = y
+      delete(g)
+      delete(y)
+      delete(i)
+      print("wrote " + path)
     end do
-    path = "validation/reference/ncl_" + inputs(s) + "_" + waves(i) + ".nc"
-    system("rm -f " + path)
-    g = addfile(path, "c")
-    g->filtered = y
+    delete(x)
   end do
-end do
+end
