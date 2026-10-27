@@ -99,7 +99,7 @@ def test_wk_spectrum_peak_sign_convention() -> None:
     time = pd.date_range("2000-01-01", periods=384, freq="D")
     lat = np.array([-10.0, -5.0, 0.0, 5.0, 10.0])
     lon = np.arange(0.0, 360.0, 5.0)
-    config = SpectralConfig(window_size_days=96, window_skip_days=48)
+    config = SpectralConfig(window_size_days=96, window_skip_days=-48)
 
     for k_true in (4, -4):
         phase = 2 * np.pi * (

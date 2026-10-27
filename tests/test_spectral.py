@@ -18,14 +18,24 @@ def test_analyze_wk_spectrum_returns_expected_coords(synthetic_wave_data) -> Non
     assert np.isfinite(result.background.isel(frequency=slice(1, None)).values).all()
 
 
-def test_window_starts_use_step_between_segment_starts() -> None:
-    assert _window_starts(192, 96, 30) == [0, 30, 60, 90]
+def test_window_starts_follow_ncl_skip_convention() -> None:
+    """NCL nDaySkip: gap between windows; negative means overlap (start step = window + skip)."""
+    assert _window_starts(192, 96, -60) == [0, 36, 72]
+    assert _window_starts(384, 96, 30) == [0, 126, 252]
+    assert _window_starts(384, 96, -60) == [0, 36, 72, 108, 144, 180, 216, 252, 288]
+
+
+def test_window_starts_reject_non_advancing_windows() -> None:
+    import pytest
+
+    with pytest.raises(ValueError):
+        _window_starts(384, 96, -96)
 
 
 def test_default_spectral_config_matches_standard_wk_window() -> None:
     config = SpectralConfig()
     assert config.window_size_days == 96
-    assert config.window_skip_days == 30
+    assert config.window_skip_days == -60  # WK99: 96-day windows overlapping by 60 days
 
 
 def test_symmetric_signal_projects_onto_symmetric_power() -> None:

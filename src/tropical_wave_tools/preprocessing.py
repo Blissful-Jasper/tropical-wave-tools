@@ -38,6 +38,28 @@ def validate_symmetric_latitude_grid(
     return data
 
 
+def nint(value: float) -> int:
+    """Round half up, like NCL's ``round``/``nint`` (``np.round`` rounds half to even)."""
+    return int(np.floor(value + 0.5))
+
+
+def split_cosine_bell(length: int, fraction: float = 0.05) -> np.ndarray:
+    """Split-cosine-bell taper as used by NCL (``fraction`` of the series tapered in total).
+
+    ``fraction / 2`` of the series is tapered at each end with weights
+    ``0.5 * (1 - cos(pi * (i + 0.5) / m))`` for ``i = 0..m-1``. This is *not* identical to
+    ``scipy.signal.windows.tukey`` (end-point convention), which gives ~1% differences
+    in filtered fields and spectra when compared with NCL.
+    """
+    window = np.ones(length)
+    m = nint(length * fraction / 2.0)
+    if m > 0:
+        ramp = 0.5 * (1.0 - np.cos(np.pi * (np.arange(m) + 0.5) / m))
+        window[:m] = ramp
+        window[length - m :] = ramp[::-1]
+    return window
+
+
 def smooth_121(array: np.ndarray) -> np.ndarray:
     """Apply a 1-2-1 smoother while preserving edge length."""
     values = np.asarray(array, dtype=np.float64)

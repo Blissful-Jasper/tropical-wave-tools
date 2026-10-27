@@ -16,6 +16,7 @@ from tropical_wave_tools.preprocessing import (
     detrend_with_mean,
     remove_annual_cycle_fft,
     smooth_121,
+    split_cosine_bell,
 )
 
 
@@ -48,12 +49,20 @@ class WKAnalysisResult:
         )
 
 
-def _window_starts(total_samples: int, window_samples: int, step_samples: int) -> list[int]:
-    """Return segment starts for one WK spectrum calculation."""
+def _window_starts(total_samples: int, window_samples: int, skip_samples: int) -> list[int]:
+    """Return segment starts for one WK spectrum calculation.
+
+    ``skip_samples`` is NCL's ``nDaySkip``: the gap between windows (negative = overlap), so
+    consecutive starts are ``window_samples + skip_samples`` apart.
+    """
     if window_samples <= 0:
         raise ValueError("`window_size_days` must resolve to a positive sample count.")
+    step_samples = window_samples + skip_samples
     if step_samples <= 0:
-        raise ValueError("`window_skip_days` must resolve to a positive segment step.")
+        raise ValueError(
+            "`window_skip_days` must be greater than `-window_size_days` so that consecutive "
+            "windows advance."
+        )
     if total_samples < window_samples:
         return []
     return list(range(0, total_samples - window_samples + 1, step_samples))
@@ -118,14 +127,14 @@ class WKSpectralAnalysis:
         n_day_win = self.config.window_size_days
         n_day_skip = self.config.window_skip_days
         n_samp_win = int(n_day_win * spd)
-        n_samp_step = int(n_day_skip * spd)
+        n_samp_skip = int(n_day_skip * spd)
 
         if ntim < n_samp_win:
             raise ValueError(
                 f"Input time length ({ntim}) is shorter than the analysis window ({n_samp_win})."
             )
 
-        window_starts = _window_starts(ntim, n_samp_win, n_samp_step)
+        window_starts = _window_starts(ntim, n_samp_win, n_samp_skip)
         if not window_starts:
             raise ValueError("No valid analysis windows were found.")
 
@@ -135,7 +144,7 @@ class WKSpectralAnalysis:
             stop = start + n_samp_win
             data_window = self.processed_data[start:stop, :, :]
             window_values = signal.detrend(data_window.values, axis=0)
-            taper = signal.windows.tukey(n_samp_win, self.config.tukey_alpha, sym=True)
+            taper = split_cosine_bell(n_samp_win, self.config.tukey_alpha)
             window_values *= taper[:, np.newaxis, np.newaxis]
             power = fft.fft2(window_values, axes=(0, 2)) / (nlon * n_samp_win)
             sumpower += np.abs(power) ** 2
@@ -150,7 +159,12 @@ class WKSpectralAnalysis:
             sumpower = fft.fftshift(sumpower, axes=2)[:, :, ::-1]
 
         frequency = fft.fftshift(fft.fftfreq(n_samp_win, d=1.0 / spd))[n_samp_win // 2 :]
-        sumpower = fft.fftshift(sumpower, axes=0)[n_samp_win // 2 :, :, :]
+        shifted = fft.fftshift(sumpower, axes=0)
+        sumpower = shifted[n_samp_win // 2 :, :, :]
+        if n_samp_win % 2 == 0:
+            # Nyquist bin: it is its own mirror image, so append it as the last frequency
+            frequency = np.append(frequency, 0.5 * spd)
+            sumpower = np.concatenate([sumpower, shifted[:1, :, :]], axis=0)
 
         power_symmetric = np.array(2.0 * sumpower[:, nlat // 2 :, :].sum(axis=1), copy=True)
         power_antisymmetric = np.array(2.0 * sumpower[:, : nlat // 2, :].sum(axis=1), copy=True)
@@ -159,6 +173,14 @@ class WKSpectralAnalysis:
         power_symmetric[0, :] = np.nan
         power_antisymmetric[0, :] = np.nan
         background[0, :] = np.nan
+
+        # WK99 / NCL: the raw symmetric and antisymmetric spectra get one 1-2-1 pass in frequency.
+        # NCL leaves the zero-frequency and Nyquist rows out of the smoothing (edge values are
+        # replicated at the first and last smoothed row).
+        last_row = power_symmetric.shape[0] - (1 if n_samp_win % 2 == 0 else 0)
+        for raw in (power_symmetric, power_antisymmetric):
+            for column in range(raw.shape[1]):
+                raw[1:last_row, column] = smooth_121(raw[1:last_row, column])
 
         coords = {"frequency": frequency, "wavenumber": wavenumber}
         self.result = WKAnalysisResult(
@@ -181,7 +203,10 @@ class WKSpectralAnalysis:
         wave_cap = self.config.wave_limit if wave_limit is None else wave_limit
         wave_indices = np.where(np.abs(self.result.wavenumber) <= wave_cap)[0]
 
+        # The zero-frequency row is NaN and, as in NCL, stays out of every smoothing pass.
         for idx, freq in enumerate(self.result.frequency):
+            if idx == 0:
+                continue
             if freq < 0.1:
                 n_smooth = 5
             elif freq < 0.2:
@@ -196,7 +221,7 @@ class WKSpectralAnalysis:
 
         for wavenumber_index in wave_indices:
             for _ in range(10):
-                background[:, wavenumber_index] = smooth_121(background[:, wavenumber_index])
+                background[1:, wavenumber_index] = smooth_121(background[1:, wavenumber_index])
 
         self.result = WKAnalysisResult(
             power_symmetric=self.result.power_symmetric,
@@ -239,7 +264,7 @@ def calculate_wk_spectrum(
     data: xr.DataArray,
     *,
     window_days: int = 96,
-    skip_days: int = 30,
+    skip_days: int = -60,
     output_path: str | Path | None = None,
 ) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
     """

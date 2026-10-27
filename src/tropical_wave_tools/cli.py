@@ -70,8 +70,9 @@ def build_parser() -> argparse.ArgumentParser:
     wk_parser.add_argument(
         "--skip-days",
         type=int,
-        default=30,
-        help="Window advance in days between segment starts (30 days gives about two months overlap for a 96-day window).",
+        default=-60,
+        help="Gap in days between windows, as NCL wkSpaceTime nDaySkip; negative values overlap "
+        "the windows (-60 is the Wheeler-Kiladis 1999 setting: 96-day windows overlapping by 60 days).",
     )
     wk_parser.add_argument("--output-dir", required=True, help="Output directory.")
 

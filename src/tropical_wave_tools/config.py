@@ -24,10 +24,17 @@ DEFAULT_CONTOUR_LEVELS = (
 
 @dataclass
 class SpectralConfig:
-    """Configuration for Wheeler-Kiladis spectral analysis."""
+    """Configuration for Wheeler-Kiladis spectral analysis.
+
+    ``window_skip_days`` follows NCL ``wkSpaceTime``: it is the gap between the end of one
+    window and the start of the next, and a negative value means the windows overlap. Window
+    starts are therefore ``window_size_days + window_skip_days`` apart. The default of ``-60``
+    is the Wheeler & Kiladis (1999) setting (96-day windows overlapping by 60 days).
+    ``tukey_alpha`` is the fraction of each window that is tapered (split cosine bell, as in NCL).
+    """
 
     window_size_days: int = 96
-    window_skip_days: int = 30
+    window_skip_days: int = -60
     samples_per_day: float = 1.0
     freq_cutoff: float | None = None
     wave_limit: int = 27

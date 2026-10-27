@@ -133,7 +133,7 @@ with tab_wk:
     left, right = st.columns([1, 3])
     with left:
         window = st.number_input("窗口长度 (天)", 32, 256, 96, step=8)
-        skip = st.number_input("窗口步长 (天)", 8, 128, 30, step=2)
+        skip = st.number_input("窗口间隔 (天，负值表示重叠)", -90, 128, -60, step=2)
         max_wn = st.slider("最大波数", 5, 20, 15)
         max_freq = st.slider("最大频率 (cpd)", 0.2, 0.8, 0.5, step=0.05)
         run_wk = st.button("运行频谱分析", type="primary")
