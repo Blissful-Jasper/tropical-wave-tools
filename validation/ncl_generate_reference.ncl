@@ -6,9 +6,10 @@
 ;                 period(0), period(1), wavenumber(0), wavenumber(1), depth(0), depth(1), "kelvin")
 ; i.e. one (time, lon) slice per latitude and a lower-case waveName.
 ;
-; Only the Kelvin parameters have been confirmed against that script. The other bands use the
-; band edges of tropical_wave_tools.config.DEFAULT_WAVE_SPECS; check hMin/hMax and waveName for
-; "mjo"/"td" in your kf_filter.ncl (see validation/README_ncl.md) before enabling them.
+; kf_filter.ncl (header, lines 14-24): setting BOTH hMin and hMax to *missing* ignores the
+; dispersion curve, which is what the rectangular "mjo" and "td" bands need. Accepted waveName
+; values are Kelvin/kelvin/KELVIN, ER/er, MRG/IG0/mrg/ig0, IG1/ig1, IG2/ig2; any other name only
+; applies the period/wavenumber box. Band edges follow tropical_wave_tools.config.DEFAULT_WAVE_SPECS.
 ;
 ; Run from the repository root (see validation/run_ncl_reference.sh):
 ;     WAVES=kelvin ncl validation/ncl_generate_reference.ncl
@@ -25,14 +26,18 @@ begin
   inputs = (/ "filter", "real" /)
   obsPerDay = 1
 
-  ; name        tMin  tMax  kMin kMax  hMin   hMax
+  ; name        tMin  tMax  kMin kMax
   names = (/ "kelvin", "er", "mrg", "td", "mjo" /)
   t_min = (/  3,    9,  2.5,  2.5,  20 /)
   t_max = (/ 20,   72,   10,    5, 100 /)
   k_min = (/  2,  -10,  -10,  -20,   1 /)
   k_max = (/ 14,   -1,   -1,   -6,   5 /)
-  h_min = (/  8,    8,    8, -999, -999 /)   ; TODO verify the "no dispersion" value for td/mjo
-  h_max = (/ 90,   90,   90, -999, -999 /)
+
+  ; equivalent depths; entries left unset stay missing = "no dispersion curve" (td, mjo)
+  h_min = new(5, float)
+  h_max = new(5, float)
+  h_min(0:2) = (/ 8,  8,  8 /)
+  h_max(0:2) = (/ 90, 90, 90 /)
 
   do s = 0, dimsizes(inputs) - 1
     f = addfile("validation/" + inputs(s) + "_input.nc", "r")

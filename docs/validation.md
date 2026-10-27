@@ -33,7 +33,8 @@ WAVES=kelvin,er,mrg,mjo,td bash validation/run_ncl_reference.sh   # 核对 waveN
 
 脚本会重新生成输入、调用 NCL、输出对比表。确认无误后把 `validation/reference/` 下的文件提交。
 `kf_filter` 的调用形式（逐纬度传入 `time×lon`、小写 `waveName`）取自作者现有的 CCKW 生产脚本；
-ER/MRG/MJO/TD 的 `waveName` 与 `hMin`/`hMax` 取值详见 `validation/README_ncl.md`。
+根据 `kf_filter.ncl` 头部说明，MJO/TD 这类无色散曲线的波段需把 `hMin`/`hMax` 设为**缺失值**（不是 -999），
+`MRG` 与 `IG0` 是同一分支。详见 `validation/README_ncl.md`。
 
 也可以分步运行：
 
@@ -48,10 +49,9 @@ WK 频谱使用同样的思路：`ncl validation/ncl_wkspacetime.ncl` 在种子�
 上调用 `wkSpaceTime`（调用方式沿用 `wk_time4.ncl`）。该过程是否把谱数组写成 netCDF
 取决于 NCL 版本，需要先运行并查看 `validation/wk_out/` 下实际生成的文件，再据此补充对比代码。
 
-!!! warning "仅 Kelvin 的调用已确认"
-    参数顺序与 `waveName` 写法已由实际使用的脚本确认，但 MJO/TD 的"无色散"哨兵值尚未确认，
-    见 [kf_filter 文档](https://www.ncl.ucar.edu/Document/Functions/User_contributed/kf_filter.shtml)
-    与本机 `kf_filter.ncl` 源码。
+!!! note "已核对的 NCL 接口"
+    参数顺序、`waveName` 取值与"缺失值表示无色散"均来自实际脚本与 `kf_filter.ncl` 头部；
+    各波段的数值一致性仍待 NCL 实跑确认。
 
 默认阈值：相关系数 ≥ 0.9999，归一化 RMSE ≤ 0.01，拿到实测结果后再收紧。若某个波段不达标，优先检查：
 
