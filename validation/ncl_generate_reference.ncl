@@ -18,9 +18,6 @@
 load "$NCARG_ROOT/lib/ncarg/nclscripts/contrib/kf_filter.ncl"
 
 begin
-  ; filter_input.nc has an int64 time coordinate, which the default classic netCDF output rejects
-  setfileoption("nc", "Format", "NetCDF4")
-
   wave_env = getenv("WAVES")
   if (ismissing(wave_env)) then
     wave_env = "kelvin"
@@ -68,8 +65,15 @@ begin
       path = "validation/reference/ncl_" + inputs(s) + "_" + waves(w) + ".nc"
       system("rm -f " + path)
       g = addfile(path, "c")
-      g->filtered = y
+      ; values + dimension names only: filter_input.nc has an int64 time coordinate, which the
+      ; classic netCDF output cannot hold (the comparison does not use coordinate values)
+      out = (/ y /)
+      out!0 = "time"
+      out!1 = "lat"
+      out!2 = "lon"
+      g->filtered = out
       delete(g)
+      delete(out)
       delete(y)
       delete(i)
       print("wrote " + path)
