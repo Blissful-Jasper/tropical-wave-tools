@@ -38,3 +38,7 @@ data/*.pdf
 .streamlit/
 .ipynb_checkpoints/
 
+
+# Generated validation artifacts
+validation/input_equator.nc
+validation/reference/*.nc

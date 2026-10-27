@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Dict, Optional, Tuple, Union
 import warnings
+from dataclasses import dataclass, field
 
 import numpy as np
 import xarray as xr
@@ -49,11 +48,11 @@ def nan_to_value_by_interp_3D(values: np.ndarray) -> np.ndarray:
 
 
 def remove_annual_cycle(
-    data: Union[xr.DataArray, np.ndarray],
+    data: xr.DataArray | np.ndarray,
     *,
     spd: int = 1,
     fCrit: float = 3.0 / 365.0,
-) -> Union[xr.DataArray, np.ndarray]:
+) -> xr.DataArray | np.ndarray:
     """Remove linear trend and low-frequency annual-cycle variability."""
     is_xarray = isinstance(data, xr.DataArray)
     if is_xarray:
@@ -224,8 +223,8 @@ def _compute_coherence_phase(spectra: np.ndarray) -> np.ndarray:
 
 
 def calculate_cross_spectrum(
-    X: Union[xr.DataArray, np.ndarray],
-    Y: Union[xr.DataArray, np.ndarray],
+    X: xr.DataArray | np.ndarray,
+    Y: xr.DataArray | np.ndarray,
     *,
     segLen: int = 96,
     segOverLap: int = -65,
@@ -234,7 +233,7 @@ def calculate_cross_spectrum(
     normalize_by_reference: bool = False,
     latent_heat: float = 2.5e6,
     samples_per_day: int = 1,
-) -> Dict[str, Union[np.ndarray, xr.DataArray, float]]:
+) -> dict[str, np.ndarray | xr.DataArray | float]:
     """Calculate a wavenumber-frequency cross-spectrum."""
     if samples_per_day <= 0:
         raise ValueError("`samples_per_day` must be a positive integer.")
@@ -307,7 +306,7 @@ def calculate_cross_spectrum(
     prob = np.array([0.80, 0.85, 0.90, 0.925, 0.95, 0.99])
     prob_coh2 = 1 - np.power(1 - prob, 1.0 / (0.5 * dof - 1))
 
-    result: Dict[str, Union[np.ndarray, xr.DataArray, float]] = {
+    result: dict[str, np.ndarray | xr.DataArray | float] = {
         "freq": freq,
         "wave": wave,
         "nseg": n_segments,
@@ -349,7 +348,7 @@ def quick_cross_spectrum(
     *,
     remove_annual: bool = True,
     **kwargs: object,
-) -> Dict[str, Union[np.ndarray, xr.DataArray, float]]:
+) -> dict[str, np.ndarray | xr.DataArray | float]:
     """Convenience wrapper that removes a day-of-year climatology before analysis."""
     if remove_annual:
         x_anomaly = X.groupby("time.dayofyear") - X.groupby("time.dayofyear").mean()
@@ -363,7 +362,7 @@ def quick_cross_spectrum(
 __all__ = [
     "CrossSpectrumConfig",
     "calculate_cross_spectrum",
+    "nan_to_value_by_interp_3D",
     "quick_cross_spectrum",
     "remove_annual_cycle",
-    "nan_to_value_by_interp_3D",
 ]

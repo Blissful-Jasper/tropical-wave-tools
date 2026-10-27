@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Tuple
-
 
 DEFAULT_CONTOUR_LEVELS = (
     0.0,
@@ -31,9 +29,9 @@ class SpectralConfig:
     window_size_days: int = 96
     window_skip_days: int = 30
     samples_per_day: float = 1.0
-    freq_cutoff: Optional[float] = None
+    freq_cutoff: float | None = None
     wave_limit: int = 27
-    contour_levels: Tuple[float, ...] = field(default_factory=lambda: DEFAULT_CONTOUR_LEVELS)
+    contour_levels: tuple[float, ...] = field(default_factory=lambda: DEFAULT_CONTOUR_LEVELS)
     wavenumber_limit: int = 15
     tukey_alpha: float = 0.1
 
@@ -49,14 +47,14 @@ class SpectralConfig:
 class WaveSpec:
     """Definition of one wave filter band."""
 
-    period_days: Tuple[Optional[float], Optional[float]]
-    wavenumber: Tuple[int, int]
-    equivalent_depth: Tuple[Optional[float], Optional[float]]
-    meridional_mode: Optional[int] = None
+    period_days: tuple[float | None, float | None]
+    wavenumber: tuple[int, int]
+    equivalent_depth: tuple[float | None, float | None]
+    meridional_mode: int | None = None
     dispersion_family: str = "none"
 
 
-DEFAULT_WAVE_SPECS: Dict[str, WaveSpec] = {
+DEFAULT_WAVE_SPECS: dict[str, WaveSpec] = {
     "kelvin": WaveSpec((3.0, 20.0), (2, 14), (8.0, 90.0), None, "kelvin"),
     "er": WaveSpec((9.0, 72.0), (-10, -1), (8.0, 90.0), 1, "er"),
     # Synoptic gravity-wave boxes follow Mayta et al. (2024), summarizing the

@@ -6,7 +6,6 @@ from pathlib import Path
 
 from tropical_wave_tools.atlas import generate_local_wave_atlas
 
-
 if __name__ == "__main__":
     summary = generate_local_wave_atlas(
         output_dir=Path("outputs/local_wave_atlas"),

@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
-from scipy import stats as scipy_stats
 import xarray as xr
+from scipy import stats as scipy_stats
 
 from tropical_wave_tools.io import rename_standard_coordinates, to_dataarray
 

@@ -2,27 +2,27 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import xarray as xr
 
 from tropical_wave_tools.filters import CCKWFilter, WaveFilter
-from tropical_wave_tools.io import describe_dataarray, load_dataarray, save_dataarray, save_dataset
+from tropical_wave_tools.io import describe_dataarray, load_dataarray, save_dataset
 from tropical_wave_tools.plotting import plot_spatial_std_comparison, plot_wk_spectrum
 from tropical_wave_tools.sample_data import copy_full_example_data
 from tropical_wave_tools.spectral import SpectralConfig, WKAnalysisResult, analyze_wk_spectrum
 
 
 def create_demo_subset(
-    source_path: Union[str, Path],
-    output_path: Union[str, Path],
+    source_path: str | Path,
+    output_path: str | Path,
     *,
     variable: str = "olr",
-    time_range: Tuple[str, str] = ("1979-01-01", "1979-12-31"),
-    lat_range: Tuple[float, float] = (-15.0, 15.0),
+    time_range: tuple[str, str] = ("1979-01-01", "1979-12-31"),
+    lat_range: tuple[float, float] = (-15.0, 15.0),
 ) -> Path:
     """Create a lightweight equatorial OLR sample subset for tests and docs."""
     data = load_dataarray(
@@ -38,20 +38,20 @@ def create_demo_subset(
     return output
 
 
-def install_local_data_copy(source_path: Union[str, Path], target_dir: Union[str, Path]) -> Path:
+def install_local_data_copy(source_path: str | Path, target_dir: str | Path) -> Path:
     """Copy the full local source file into the project-local data folder."""
     return copy_full_example_data(source_path, target_dir)
 
 
 def analyze_wk_spectrum_from_file(
-    input_path: Union[str, Path],
+    input_path: str | Path,
     *,
     variable: str = "olr",
-    lat_range: Tuple[float, float] = (-15.0, 15.0),
-    time_range: Optional[Tuple[str, str]] = None,
-    output_dir: Optional[Union[str, Path]] = None,
-    config: Optional[SpectralConfig] = None,
-) -> Tuple[WKAnalysisResult, Dict[str, object]]:
+    lat_range: tuple[float, float] = (-15.0, 15.0),
+    time_range: tuple[str, str] | None = None,
+    output_dir: str | Path | None = None,
+    config: SpectralConfig | None = None,
+) -> tuple[WKAnalysisResult, dict[str, object]]:
     """Load data, compute a WK spectrum, and optionally save outputs."""
     data = load_dataarray(
         input_path,
@@ -75,7 +75,7 @@ def analyze_wk_spectrum_from_file(
 def compute_spatial_metrics(
     legacy_std: xr.DataArray,
     cckw_std: xr.DataArray,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Compute summary statistics for legacy-vs-CCKW comparisons."""
     diff = legacy_std - cckw_std
     legacy_values = legacy_std.values.ravel()
@@ -104,18 +104,18 @@ def compute_spatial_metrics(
 
 
 def compare_filter_spatial_fields(
-    input_path: Union[str, Path],
+    input_path: str | Path,
     *,
     variable: str = "olr",
     waves: Sequence[str] = ("kelvin", "mjo"),
-    time_range: Tuple[str, str] = ("1979-01-01", "1981-12-31"),
-    lat_range: Tuple[float, float] = (-25.0, 25.0),
+    time_range: tuple[str, str] = ("1979-01-01", "1981-12-31"),
+    lat_range: tuple[float, float] = (-25.0, 25.0),
     spd: int = 1,
     n_harm: int = 3,
     n_jobs: int = -1,
     n_workers: int = 4,
     use_parallel: bool = True,
-    output_dir: Optional[Union[str, Path]] = None,
+    output_dir: str | Path | None = None,
 ) -> pd.DataFrame:
     """Run legacy and CCKW filters on the same dataset and compare their spatial STD."""
     data = load_dataarray(
@@ -128,7 +128,7 @@ def compare_filter_spatial_fields(
     if output_root is not None:
         output_root.mkdir(parents=True, exist_ok=True)
 
-    rows: List[Dict[str, Union[float, str]]] = []
+    rows: list[dict[str, float | str]] = []
     for wave_name in waves:
         legacy = WaveFilter().extract_wave_signal(
             data,

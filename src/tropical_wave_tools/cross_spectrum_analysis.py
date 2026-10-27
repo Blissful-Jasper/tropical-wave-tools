@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Dict, Optional, Sequence, Tuple, Union
 import gc
+from collections.abc import Sequence
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -31,7 +31,7 @@ class MemoryMonitor:
     def __init__(self) -> None:
         self.process = psutil.Process() if psutil is not None else None
 
-    def get_memory_info(self) -> Dict[str, float]:
+    def get_memory_info(self) -> dict[str, float]:
         """Return process and system memory information."""
         if self.process is None or psutil is None:
             return {
@@ -52,7 +52,7 @@ class MemoryMonitor:
             "total_gb": virtual_mem.total / 1024**3,
         }
 
-    def print_memory_status(self, label: str = "") -> Dict[str, float]:
+    def print_memory_status(self, label: str = "") -> dict[str, float]:
         """Print and return memory information."""
         info = self.get_memory_info()
         print(f"Memory status {('- ' + label) if label else ''}: {info}")
@@ -60,10 +60,10 @@ class MemoryMonitor:
 
 
 def load_netcdf_data(
-    file_path: Union[str, Path],
+    file_path: str | Path,
     *,
-    variable: Optional[str] = None,
-    chunks: Optional[Dict[str, int]] = None,
+    variable: str | None = None,
+    chunks: dict[str, int] | None = None,
     verbose: bool = True,
 ) -> xr.DataArray:
     """Load one NetCDF file using the project-standard I/O path."""
@@ -75,15 +75,15 @@ def load_netcdf_data(
 def load_multiple_experiments(
     variable_name: str,
     experiments: Sequence[str],
-    data_dir: Union[str, Path],
+    data_dir: str | Path,
     *,
     file_pattern: str = "{var}_{exp}_2deg_interp.nc",
-    chunks: Optional[Dict[str, int]] = None,
+    chunks: dict[str, int] | None = None,
     scale_factor: float = 1.0,
     verbose: bool = True,
-) -> Dict[str, xr.DataArray]:
+) -> dict[str, xr.DataArray]:
     """Load one variable across multiple experiments."""
-    data_dict: Dict[str, xr.DataArray] = {}
+    data_dict: dict[str, xr.DataArray] = {}
     for experiment in experiments:
         file_path = Path(data_dir) / file_pattern.format(var=variable_name, exp=experiment)
         try:
@@ -101,12 +101,12 @@ def preprocess_data_with_mask(
     data1: xr.DataArray,
     data2: xr.DataArray,
     *,
-    mask: Optional[xr.DataArray] = None,
+    mask: xr.DataArray | None = None,
     remove_annual: bool = True,
     fill_value: float = 0.0,
     samples_per_day: int = 1,
     verbose: bool = True,
-) -> Tuple[xr.DataArray, xr.DataArray]:
+) -> tuple[xr.DataArray, xr.DataArray]:
     """Apply masking, NaN cleanup, and optional annual-cycle removal."""
     if remove_annual:
         data1 = data1.groupby("time.dayofyear") - data1.groupby("time.dayofyear").mean()
@@ -130,7 +130,7 @@ def preprocess_data_with_mask(
     return data1, data2
 
 
-def _compute_many(*arrays: xr.DataArray) -> Tuple[xr.DataArray, ...]:
+def _compute_many(*arrays: xr.DataArray) -> tuple[xr.DataArray, ...]:
     """Compute lazy arrays if dask is available."""
     if dask is not None:
         return dask.compute(*arrays)
@@ -138,20 +138,20 @@ def _compute_many(*arrays: xr.DataArray) -> Tuple[xr.DataArray, ...]:
 
 
 def compute_cross_spectrum_for_experiments(
-    data1_dict: Dict[str, xr.DataArray],
-    data2_dict: Dict[str, xr.DataArray],
+    data1_dict: dict[str, xr.DataArray],
+    data2_dict: dict[str, xr.DataArray],
     *,
     experiments: Sequence[str],
-    mask: Optional[xr.DataArray] = None,
+    mask: xr.DataArray | None = None,
     seg_length: int = 96,
     seg_overlap: int = -65,
     symmetry: str = "symm",
     samples_per_day: int = 1,
-    memory_monitor: Optional[MemoryMonitor] = None,
+    memory_monitor: MemoryMonitor | None = None,
     verbose: bool = True,
-) -> Dict[str, Dict[str, object]]:
+) -> dict[str, dict[str, object]]:
     """Compute cross-spectra for multiple experiments."""
-    results: Dict[str, Dict[str, object]] = {}
+    results: dict[str, dict[str, object]] = {}
     for experiment in experiments:
         if experiment not in data1_dict or experiment not in data2_dict:
             continue
@@ -192,21 +192,21 @@ def compute_cross_spectrum_for_experiments(
 
 
 def plot_cross_spectrum_panel(
-    results: Dict[str, Dict[str, object]],
+    results: dict[str, dict[str, object]],
     *,
     experiments: Sequence[str],
-    exp_titles: Optional[Sequence[str]] = None,
-    figsize: Tuple[float, float] = (16, 8),
+    exp_titles: Sequence[str] | None = None,
+    figsize: tuple[float, float] = (16, 8),
     dpi: int = 300,
     cmap: str = "viridis",
-    contour_levels: Optional[np.ndarray] = None,
+    contour_levels: np.ndarray | None = None,
     vector_scale: float = 30.0,
     vector_skip: int = 2,
-    xlim: Tuple[float, float] = (-15, 15),
-    ylim: Tuple[float, float] = (0.0, 0.5),
-    output_path: Optional[Union[str, Path]] = None,
+    xlim: tuple[float, float] = (-15, 15),
+    ylim: tuple[float, float] = (0.0, 0.5),
+    output_path: str | Path | None = None,
     verbose: bool = True,
-) -> Tuple[plt.Figure, np.ndarray]:
+) -> tuple[plt.Figure, np.ndarray]:
     """Plot coherence-squared panels for multiple experiments."""
     if exp_titles is None:
         exp_titles = [str(experiment).upper() for experiment in experiments]
@@ -280,21 +280,21 @@ def analyze_cross_spectrum(
     var1_name: str,
     var2_name: str,
     experiments: Sequence[str],
-    data_dir: Union[str, Path],
+    data_dir: str | Path,
     *,
-    mask: Optional[xr.DataArray] = None,
+    mask: xr.DataArray | None = None,
     file_pattern: str = "{var}_{exp}_2deg_interp.nc",
     var1_scale: float = 1.0,
     var2_scale: float = 1.0,
-    chunks: Optional[Dict[str, int]] = None,
+    chunks: dict[str, int] | None = None,
     seg_length: int = 96,
     seg_overlap: int = -65,
     symmetry: str = "symm",
     samples_per_day: int = 1,
-    output_dir: Optional[Union[str, Path]] = None,
-    plot_params: Optional[Dict[str, object]] = None,
+    output_dir: str | Path | None = None,
+    plot_params: dict[str, object] | None = None,
     verbose: bool = True,
-) -> Tuple[Dict[str, Dict[str, object]], Optional[Tuple[plt.Figure, np.ndarray]]]:
+) -> tuple[dict[str, dict[str, object]], tuple[plt.Figure, np.ndarray] | None]:
     """One-stop cross-spectrum workflow from data loading to plotting."""
     memory_monitor = MemoryMonitor()
     if verbose:
@@ -353,10 +353,10 @@ def analyze_cross_spectrum(
 
 __all__ = [
     "MemoryMonitor",
-    "load_netcdf_data",
-    "load_multiple_experiments",
-    "preprocess_data_with_mask",
-    "compute_cross_spectrum_for_experiments",
-    "plot_cross_spectrum_panel",
     "analyze_cross_spectrum",
+    "compute_cross_spectrum_for_experiments",
+    "load_multiple_experiments",
+    "load_netcdf_data",
+    "plot_cross_spectrum_panel",
+    "preprocess_data_with_mask",
 ]

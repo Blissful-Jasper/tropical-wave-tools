@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple, Union
 
 import numpy as np
 import xarray as xr
@@ -63,20 +62,20 @@ def _window_starts(total_samples: int, window_samples: int, step_samples: int) -
 class WKSpectralAnalysis:
     """Stateful WK analysis pipeline mirroring the original project."""
 
-    def __init__(self, config: Optional[SpectralConfig] = None):
+    def __init__(self, config: SpectralConfig | None = None):
         self.config = config or SpectralConfig()
-        self.raw_data: Optional[xr.DataArray] = None
-        self.processed_data: Optional[xr.DataArray] = None
-        self.result: Optional[WKAnalysisResult] = None
+        self.raw_data: xr.DataArray | None = None
+        self.processed_data: xr.DataArray | None = None
+        self.result: WKAnalysisResult | None = None
 
     def load_data(
         self,
         *,
-        data: Optional[xr.DataArray] = None,
-        data_path: Optional[Union[str, Path]] = None,
+        data: xr.DataArray | None = None,
+        data_path: str | Path | None = None,
         variable: str = "olr",
-        lat_range: Tuple[float, float] = (-15.0, 15.0),
-        time_range: Optional[Tuple[str, str]] = None,
+        lat_range: tuple[float, float] = (-15.0, 15.0),
+        time_range: tuple[str, str] | None = None,
     ) -> WKSpectralAnalysis:
         """Load data from a DataArray or a NetCDF file."""
         if data is None and data_path is None:
@@ -173,7 +172,7 @@ class WKSpectralAnalysis:
         )
         return self
 
-    def smooth_background(self, *, wave_limit: Optional[int] = None) -> WKSpectralAnalysis:
+    def smooth_background(self, *, wave_limit: int | None = None) -> WKSpectralAnalysis:
         """Smooth the background spectrum using the original 1-2-1 logic."""
         if self.result is None:
             raise ValueError("Call compute_spectrum() before smooth_background().")
@@ -210,7 +209,7 @@ class WKSpectralAnalysis:
         )
         return self
 
-    def save(self, output_path: Union[str, Path]) -> Path:
+    def save(self, output_path: str | Path) -> Path:
         """Serialize the current result to NetCDF."""
         if self.result is None:
             raise ValueError("No result is available to save.")
@@ -220,8 +219,8 @@ class WKSpectralAnalysis:
 def analyze_wk_spectrum(
     data: xr.DataArray,
     *,
-    config: Optional[SpectralConfig] = None,
-    output_path: Optional[Union[str, Path]] = None,
+    config: SpectralConfig | None = None,
+    output_path: str | Path | None = None,
 ) -> WKAnalysisResult:
     """High-level WK analysis returning a structured result object."""
     analysis = WKSpectralAnalysis(config)
@@ -241,8 +240,8 @@ def calculate_wk_spectrum(
     *,
     window_days: int = 96,
     skip_days: int = 30,
-    output_path: Optional[Union[str, Path]] = None,
-) -> Tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
+    output_path: str | Path | None = None,
+) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
     """
     Compatibility helper matching the original package return signature.
 

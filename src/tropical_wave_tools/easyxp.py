@@ -8,7 +8,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
-
 LocationOption = Literal["lower right", "lower left", "upper right", "upper left"]
 
 

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
 import os
 import pickle
+import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -39,8 +39,8 @@ class EOFAnalyzer:
         self.apply_land_mask = apply_land_mask
         self.ocean_only = ocean_only
         self.mask_resolution = mask_resolution
-        self.land_mask: Optional[xr.DataArray] = None
-        self.eof_results: Dict[str, object] = {}
+        self.land_mask: xr.DataArray | None = None
+        self.eof_results: dict[str, object] = {}
 
     def create_land_mask(self, data: xr.DataArray, resolution: str = "c") -> xr.DataArray:
         """Create a land/ocean mask using ``global-land-mask`` if available."""
@@ -62,11 +62,11 @@ class EOFAnalyzer:
         self.land_mask = ~mask if self.ocean_only else mask
         return self.land_mask
 
-    def _detect_dims(self, data: xr.DataArray) -> Dict[str, Optional[str]]:
+    def _detect_dims(self, data: xr.DataArray) -> dict[str, str | None]:
         dims = list(data.dims)
         dims_lc = [dim.lower() for dim in dims]
 
-        def find_dim(candidates: List[str]) -> Optional[str]:
+        def find_dim(candidates: list[str]) -> str | None:
             for candidate in candidates:
                 if candidate in dims_lc:
                     return dims[dims_lc.index(candidate)]
@@ -84,7 +84,7 @@ class EOFAnalyzer:
             "ensemble": find_dim(["member", "ensemble", "ens"]),
         }
 
-    def _compute_eof_svd(self, matrix: np.ndarray) -> Dict[str, np.ndarray]:
+    def _compute_eof_svd(self, matrix: np.ndarray) -> dict[str, np.ndarray]:
         """Compute EOFs from a feature x sample matrix."""
         valid_mask = ~np.any(np.isnan(matrix), axis=0)
         matrix_valid = matrix[:, valid_mask]
@@ -108,7 +108,7 @@ class EOFAnalyzer:
             "phi_L": phi_L,
         }
 
-    def _compute_eof_xeofs(self, data: xr.DataArray, n_modes: int = 10) -> Dict[str, object]:
+    def _compute_eof_xeofs(self, data: xr.DataArray, n_modes: int = 10) -> dict[str, object]:
         """Compute EOFs using xeofs if available."""
         try:
             import xeofs as xe
@@ -151,7 +151,7 @@ class EOFAnalyzer:
             "phi_L": None,
         }
 
-    def _estimate_dof(self, matrix: np.ndarray, L: int = 1) -> Tuple[float, float, float]:
+    def _estimate_dof(self, matrix: np.ndarray, L: int = 1) -> tuple[float, float, float]:
         """Estimate degrees of freedom for the North test."""
         nt = matrix.shape[1]
         covariance = 0.0
@@ -167,12 +167,12 @@ class EOFAnalyzer:
         self,
         data: xr.DataArray,
         *,
-        time_slice: Optional[slice] = None,
-        lat_slice: Optional[slice] = None,
-        level_slice: Optional[slice] = None,
+        time_slice: slice | None = None,
+        lat_slice: slice | None = None,
+        level_slice: slice | None = None,
         n_harmonics: int = 3,
         n_modes: int = 10,
-    ) -> Dict[str, object]:
+    ) -> dict[str, object]:
         """Run the EOF workflow."""
         data = rename_standard_coordinates(data)
         data = normalize_longitude(data, target="0_360")
@@ -215,7 +215,12 @@ class EOFAnalyzer:
                 climatology = data.groupby(f"{time_dim}.dayofyear").mean(dim=time_dim)
                 climatology_smoothed = extract_low_harmonics(climatology, n_harm=n_harmonics, dim="dayofyear")
                 anomalies = data.groupby(f"{time_dim}.dayofyear") - climatology_smoothed
-        except Exception:
+        except (KeyError, AttributeError, ValueError) as exc:
+            warnings.warn(
+                f"Seasonal-cycle removal failed ({exc}); falling back to the time mean.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
             climatology = data.mean(dim=time_dim)
             climatology_smoothed = climatology
             anomalies = data - climatology
@@ -243,7 +248,7 @@ class EOFAnalyzer:
                     dims=("mode", "sample"),
                     coords={"mode": np.arange(1, n_use + 1), "sample": stacked.sample},
                 )
-                full_scores.loc[dict(sample=stacked.sample[valid_mask])] = pc_valid
+                full_scores.loc[{"sample": stacked.sample[valid_mask]}] = pc_valid
                 pcs = full_scores.unstack("sample").rename("pcs")
             else:
                 stacked = anomalies.stack(feature=(lat_dim, lon_dim)).transpose("feature", time_dim)
@@ -286,8 +291,8 @@ class EOFAnalyzer:
         self,
         *,
         n_modes: int = 4,
-        figsize: Tuple[int, int] = (12, 10),
-        save_path: Optional[str] = None,
+        figsize: tuple[int, int] = (12, 10),
+        save_path: str | None = None,
         normalize: bool = True,
     ) -> plt.Figure:
         """Plot EOF vertical profiles when the decomposition uses a level dimension."""
@@ -343,7 +348,7 @@ class EOFAnalyzer:
         with open(save_path, "wb") as file_handle:
             pickle.dump(self.eof_results, file_handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-    def load_results(self, load_path: str) -> Dict[str, object]:
+    def load_results(self, load_path: str) -> dict[str, object]:
         """Load EOF results from disk."""
         if not os.path.exists(load_path):
             raise FileNotFoundError(load_path)
@@ -358,13 +363,13 @@ def quick_eof_analysis(
     *,
     method: str = "svd",
     n_modes: int = 4,
-    time_slice: Optional[slice] = None,
-    lat_slice: Optional[slice] = None,
-    level_slice: Optional[slice] = None,
+    time_slice: slice | None = None,
+    lat_slice: slice | None = None,
+    level_slice: slice | None = None,
     n_harmonics: int = 3,
     plot: bool = True,
-    save_fig: Optional[str] = None,
-) -> Tuple[EOFAnalyzer, Dict[str, object], Optional[plt.Figure]]:
+    save_fig: str | None = None,
+) -> tuple[EOFAnalyzer, dict[str, object], plt.Figure | None]:
     """Run EOF analysis in one call."""
     analyzer = EOFAnalyzer(method=method)
     results = analyzer.fit(
@@ -379,17 +384,17 @@ def quick_eof_analysis(
     return analyzer, results, figure
 
 
-def eof_svd(data: xr.DataArray, **kwargs: object) -> Tuple[EOFAnalyzer, Dict[str, object], Optional[plt.Figure]]:
+def eof_svd(data: xr.DataArray, **kwargs: object) -> tuple[EOFAnalyzer, dict[str, object], plt.Figure | None]:
     """Convenience wrapper for the SVD backend."""
     return quick_eof_analysis(data, method="svd", **kwargs)
 
 
-def eof_xeofs(data: xr.DataArray, **kwargs: object) -> Tuple[EOFAnalyzer, Dict[str, object], Optional[plt.Figure]]:
+def eof_xeofs(data: xr.DataArray, **kwargs: object) -> tuple[EOFAnalyzer, dict[str, object], plt.Figure | None]:
     """Convenience wrapper for the xeofs backend."""
     return quick_eof_analysis(data, method="xeofs", **kwargs)
 
 
-def _array_to_features(vert_vel: xr.DataArray) -> Tuple[xr.DataArray, xr.DataArray, Dict[str, xr.DataArray]]:
+def _array_to_features(vert_vel: xr.DataArray) -> tuple[xr.DataArray, xr.DataArray, dict[str, xr.DataArray]]:
     """Convert a 4D field to a NaN-filtered feature matrix."""
     stacked = vert_vel.stack(sample=("time", "lat", "lon"))
     original_coords = {"sample": stacked.sample, "level": stacked.level}
@@ -411,7 +416,7 @@ def _reconstruct_scores(
     ds: xr.DataArray,
     scores: xr.DataArray,
     valid_mask: xr.DataArray,
-    original_coords: Dict[str, xr.DataArray],
+    original_coords: dict[str, xr.DataArray],
 ) -> xr.DataArray:
     """Reconstruct score fields to the original sample space."""
     full_scores = xr.DataArray(
@@ -419,7 +424,7 @@ def _reconstruct_scores(
         coords={"mode": scores.mode, "sample": original_coords["sample"]},
         dims=["mode", "sample"],
     )
-    full_scores.loc[dict(sample=original_coords["sample"][valid_mask])] = scores.values
+    full_scores.loc[{"sample": original_coords["sample"][valid_mask]}] = scores.values
     return full_scores.unstack("sample")
 
 
@@ -427,8 +432,8 @@ def vertical_eof_with_nan_handling(
     vert_vel: xr.DataArray,
     *,
     n_modes: int = 2,
-    zg: Optional[xr.DataArray] = None,
-) -> Tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
+    zg: xr.DataArray | None = None,
+) -> tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
     """Perform EOF analysis on vertical-velocity data with NaN handling."""
     features, valid_mask, original_coords = _array_to_features(vert_vel)
     model = _get_eof_model(features, n_modes=n_modes)
@@ -449,12 +454,12 @@ def align_eof_signs(eof_ref: xr.DataArray, eof_target: xr.DataArray) -> int:
 
 
 def compare_vertical_eofs(
-    eofs_dict: Dict[str, Tuple[xr.DataArray, xr.DataArray, xr.DataArray]],
+    eofs_dict: dict[str, tuple[xr.DataArray, xr.DataArray, xr.DataArray]],
     *,
-    reference_key: Optional[str] = None,
-    figsize: Tuple[int, int] = (14, 6),
-    colors: Optional[List[str]] = None,
-    save_path: Optional[str] = None,
+    reference_key: str | None = None,
+    figsize: tuple[int, int] = (14, 6),
+    colors: list[str] | None = None,
+    save_path: str | None = None,
 ) -> plt.Figure:
     """Compare vertical EOF profiles from multiple experiments."""
     if colors is None:
@@ -505,10 +510,10 @@ def compare_vertical_eofs(
 
 __all__ = [
     "EOFAnalyzer",
-    "quick_eof_analysis",
-    "eof_svd",
-    "eof_xeofs",
-    "vertical_eof_with_nan_handling",
     "align_eof_signs",
     "compare_vertical_eofs",
+    "eof_svd",
+    "eof_xeofs",
+    "quick_eof_analysis",
+    "vertical_eof_with_nan_handling",
 ]

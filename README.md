@@ -25,7 +25,7 @@ make setup
 
 ```bash
 tropical-wave-tools prepare-sample-data \
-  --source /work/mh1498/m301257/code_project2/olr.day.mean.nc \
+  --source /path/to/olr.day.mean.nc \
   --copy-full-data
 ```
 
@@ -62,7 +62,7 @@ make publish-test
 建议在本地使用功能分支开发，确认无误后再合并到 `main`。GitHub Pages 只从 `main` 自动部署，避免开发分支内容直接发布到公开站点。
 
 ```bash
-cd /Users/lipu/Desktop/tropical_tools/tropical-wave-tools
+cd tropical-wave-tools
 
 # 更新主分支
 git switch main

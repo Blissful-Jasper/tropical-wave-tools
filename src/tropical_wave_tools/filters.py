@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import xarray as xr
@@ -39,10 +38,10 @@ class WaveFilter:
         self,
         wave_name: str,
         *,
-        period_days: Tuple[Optional[float], Optional[float]],
-        wavenumber: Tuple[int, int],
-        equivalent_depth: Tuple[Optional[float], Optional[float]] = (None, None),
-        meridional_mode: Optional[int] = None,
+        period_days: tuple[float | None, float | None],
+        wavenumber: tuple[int, int],
+        equivalent_depth: tuple[float | None, float | None] = (None, None),
+        meridional_mode: int | None = None,
         dispersion_family: str = "none",
     ) -> None:
         """Register a new wave band."""
@@ -54,7 +53,7 @@ class WaveFilter:
             dispersion_family=dispersion_family,
         )
 
-    def get_available_waves(self) -> List[str]:
+    def get_available_waves(self) -> list[str]:
         """Return the currently registered wave names."""
         return sorted(self.wave_specs)
 
@@ -77,16 +76,16 @@ class WaveFilter:
 
     def _kf_filter(
         self,
-        in_data: Union[xr.DataArray, np.ndarray],
+        in_data: xr.DataArray | np.ndarray,
         *,
         lon: np.ndarray,
         obs_per_day: int,
-        period_days: Tuple[Optional[float], Optional[float]],
-        wavenumber: Tuple[int, int],
-        equivalent_depth: Tuple[Optional[float], Optional[float]],
+        period_days: tuple[float | None, float | None],
+        wavenumber: tuple[int, int],
+        equivalent_depth: tuple[float | None, float | None],
         wave_name: str,
-        meridional_mode: Optional[int] = None,
-    ) -> Union[xr.DataArray, np.ndarray]:
+        meridional_mode: int | None = None,
+    ) -> xr.DataArray | np.ndarray:
         """
         Apply the Wheeler-Kiladis wavenumber-frequency filter on ``(time, lon)`` data.
 
@@ -94,8 +93,9 @@ class WaveFilter:
         """
         is_xarray = isinstance(in_data, xr.DataArray)
         data_np = in_data.values if is_xarray else np.asarray(in_data)
-        time_dim, lon_dim = data_np.shape
+        time_dim, _lon_dim = data_np.shape
 
+        # A cyclic point (lon[0] == lon[-1] mod 360) must not enter the zonal FFT.
         wrap_flag = np.isclose((lon[0] + 360.0) % 360.0, lon[-1] % 360.0)
         if wrap_flag:
             data_np = data_np[:, 1:]
@@ -116,15 +116,9 @@ class WaveFilter:
         j_max = int(time_dim / (period_min * obs_per_day)) if period_min else freq_dim
         j_max = min(j_max, freq_dim)
 
-        if k_min < 0:
-            i_min = max(k_dim + k_min, k_dim // 2)
-        else:
-            i_min = min(k_min, k_dim // 2)
+        i_min = max(k_dim + k_min, k_dim // 2) if k_min < 0 else min(k_min, k_dim // 2)
 
-        if k_max < 0:
-            i_max = max(k_dim + k_max, k_dim // 2)
-        else:
-            i_max = min(k_max, k_dim // 2)
+        i_max = max(k_dim + k_max, k_dim // 2) if k_max < 0 else min(k_max, k_dim // 2)
 
         if j_min > 0:
             fft_data[:j_min, :] = 0
@@ -173,7 +167,10 @@ class WaveFilter:
                 fft_data[j_max_wave + 1 :, i] = 0
 
         fft_data[:, 1:] = fft_data[:, -1:0:-1]
-        filtered = np.real(fft.irfft2(fft_data, axes=(1, 0), s=(lon_dim, time_dim)))
+        filtered = np.real(fft.irfft2(fft_data, axes=(1, 0), s=(data_np.shape[1], time_dim)))
+        if wrap_flag:
+            # Dropped the first column above, so it equals the periodic last column.
+            filtered = np.concatenate([filtered[:, -1:], filtered], axis=1)
 
         if is_xarray:
             output = in_data.copy(data=filtered)
@@ -250,11 +247,11 @@ class CCKWFilter:
     def __init__(
         self,
         *,
-        ds: Union[str, Path, xr.DataArray, xr.Dataset],
-        var: Optional[str] = None,
-        sel_dict: Optional[Dict[str, slice]] = None,
-        wave_name: Optional[str] = None,
-        units: Optional[str] = None,
+        ds: str | Path | xr.DataArray | xr.Dataset,
+        var: str | None = None,
+        sel_dict: dict[str, slice] | None = None,
+        wave_name: str | None = None,
+        units: str | None = None,
         spd: int = 1,
         n_workers: int = 4,
         verbose: bool = True,
@@ -270,11 +267,11 @@ class CCKWFilter:
         self.verbose = verbose
         self.n_harm = n_harm
 
-        self.data: Optional[xr.DataArray] = None
-        self.anomaly: Optional[xr.DataArray] = None
-        self.filtered_data: Optional[np.ndarray] = None
-        self.filter_note: Optional[str] = None
-        self.spec: Optional[WaveSpec] = None
+        self.data: xr.DataArray | None = None
+        self.anomaly: xr.DataArray | None = None
+        self.filtered_data: np.ndarray | None = None
+        self.filter_note: str | None = None
+        self.spec: WaveSpec | None = None
 
     def __repr__(self) -> str:
         return (
@@ -329,9 +326,7 @@ class CCKWFilter:
 
         if fmin is not None and fmin >= nyquist - 1.0e-12:
             return False
-        if fmax is not None and fmax > nyquist + 1.0e-12:
-            return False
-        return True
+        return not (fmax is not None and fmax > nyquist + 1e-12)
 
     def detrend_data(self) -> xr.DataArray:
         """Build the anomaly field used by the filter."""

@@ -5,7 +5,6 @@ from __future__ import annotations
 import numpy as np
 import xarray as xr
 from scipy import fft, signal
-from typing import Tuple
 
 
 def validate_symmetric_latitude_grid(
@@ -91,7 +90,7 @@ def remove_annual_cycle_fft(
 
 def decompose_symmetric_antisymmetric(
     data: xr.DataArray,
-) -> Tuple[xr.DataArray, xr.DataArray]:
+) -> tuple[xr.DataArray, xr.DataArray]:
     """Return the symmetric and antisymmetric meridional components."""
     validate_symmetric_latitude_grid(data)
     lat_axis = data.get_axis_num("lat")
@@ -163,7 +162,7 @@ def remove_daily_climatology(
     data: xr.DataArray,
     *,
     n_harm: int = 3,
-) -> Tuple[xr.DataArray, xr.DataArray]:
+) -> tuple[xr.DataArray, xr.DataArray]:
     """Remove the smoothed day-of-year climatology from a time series."""
     climatology = data.groupby("time.dayofyear").mean(dim="time")
     climatology_fit = extract_low_harmonics(climatology, n_harm=n_harm)

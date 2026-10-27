@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Iterable, Optional, Sequence, Tuple, Union
+from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,7 +13,11 @@ import xarray as xr
 from scipy.signal import find_peaks
 
 from tropical_wave_tools.config import DEFAULT_WAVE_SPECS, SpectralConfig
-from tropical_wave_tools.diagnostics import area_weighted_mean, horizontal_divergence, relative_vorticity
+from tropical_wave_tools.diagnostics import (
+    area_weighted_mean,
+    horizontal_divergence,
+    relative_vorticity,
+)
 from tropical_wave_tools.eof import EOFAnalyzer
 from tropical_wave_tools.filters import filter_wave_signal
 from tropical_wave_tools.io import load_dataarray, save_dataset
@@ -22,15 +27,15 @@ from tropical_wave_tools.plotting import (
     plot_eof_modes_with_wind,
     plot_horizontal_structure,
     plot_hovmoller_triptych,
-    plot_paper_style_hovmoller,
     plot_lag_longitude_evolution,
     plot_lagged_horizontal_structure,
     plot_monthly_cycle,
     plot_monthly_longitude_heatmap,
+    plot_paper_style_hovmoller,
+    plot_spatial_std_triptych,
     plot_wave_annual_trend_comparison,
     plot_wave_monthly_cycle_comparison,
     plot_wave_monthly_longitude_comparison,
-    plot_spatial_std_triptych,
     plot_wave_spatial_comparison,
     plot_wind_diagnostics_panel,
     plot_wk_spectrum,
@@ -38,7 +43,6 @@ from tropical_wave_tools.plotting import (
 from tropical_wave_tools.preprocess import compute_anomaly
 from tropical_wave_tools.spectral import analyze_wk_spectrum
 from tropical_wave_tools.stats import linear_regression, linear_trend, one_sample_ttest
-
 
 PathLike = Union[str, Path]
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -360,7 +364,7 @@ def _format_lat_label(value: float) -> str:
     hemi = "N" if value >= 0.0 else "S"
     magnitude = abs(float(value))
     if np.isclose(magnitude, round(magnitude)):
-        return f"{int(round(magnitude))}{hemi}"
+        return f"{round(magnitude)}{hemi}"
     return f"{magnitude:.1f}{hemi}"
 
 
@@ -372,8 +376,8 @@ def _format_lon_label(value: float) -> str:
     if np.isclose(lon, 180.0):
         return "180"
     if lon < 180.0:
-        return f"{int(round(lon))}E"
-    return f"{int(round(360.0 - lon))}W"
+        return f"{round(lon)}E"
+    return f"{round(360.0 - lon)}W"
 
 
 def _group_comparison_waves(waves: Sequence[str]) -> list[tuple[str, list[str]]]:
@@ -412,9 +416,9 @@ def load_local_wave_fields(
     olr_path: PathLike = DEFAULT_LOCAL_PATHS["olr"],
     u850_path: PathLike = DEFAULT_LOCAL_PATHS["u850"],
     v850_path: PathLike = DEFAULT_LOCAL_PATHS["v850"],
-    time_range: Optional[Tuple[str, str]] = ("1979-01-01", "2014-12-31"),
-    lat_range: Tuple[float, float] = (-20.0, 20.0),
-    lon_range: Optional[Tuple[float, float]] = None,
+    time_range: tuple[str, str] | None = ("1979-01-01", "2014-12-31"),
+    lat_range: tuple[float, float] = (-20.0, 20.0),
+    lon_range: tuple[float, float] | None = None,
 ) -> xr.Dataset:
     """Load and align local OLR/U850/V850 datasets on a common grid."""
     olr_path = _resolve_local_project_path(olr_path)
@@ -511,8 +515,8 @@ def compute_monthly_variance_fraction_samples(
     raw_anomaly: xr.DataArray,
     filtered: xr.DataArray,
     *,
-    lat_range: Optional[tuple[float, float]] = None,
-    lon_range: Optional[tuple[float, float]] = None,
+    lat_range: tuple[float, float] | None = None,
+    lon_range: tuple[float, float] | None = None,
 ) -> xr.DataArray:
     """Return monthly variance fractions (%) for one filtered wave field."""
     raw_monthly_variance = raw_anomaly.resample(time="MS").var("time")
@@ -544,7 +548,7 @@ def summarize_variance_fraction_cycle(
     variance_fraction: xr.DataArray,
     *,
     lat_range: tuple[float, float] = CASE05_LAT_RANGE,
-    lon_range: Optional[tuple[float, float]] = None,
+    lon_range: tuple[float, float] | None = None,
 ) -> tuple[xr.DataArray, xr.DataArray]:
     """Area-average a monthly variance-fraction field and summarize by calendar month."""
     if {"lat", "lon"}.issubset(variance_fraction.dims):
@@ -562,12 +566,12 @@ def summarize_variance_fraction_cycle(
     return monthly_mean, monthly_std
 
 
-def equatorial_mean(data: xr.DataArray, *, lat_band: Tuple[float, float] = (-5.0, 5.0)) -> xr.DataArray:
+def equatorial_mean(data: xr.DataArray, *, lat_band: tuple[float, float] = (-5.0, 5.0)) -> xr.DataArray:
     """Compute an equatorial-band mean."""
     return data.sel(lat=slice(*lat_band)).mean("lat")
 
 
-def is_antisymmetric_wave(wave_name: Optional[str]) -> bool:
+def is_antisymmetric_wave(wave_name: str | None) -> bool:
     """Return whether a wave is typically diagnosed with an antisymmetric projection."""
     if wave_name is None:
         return False
@@ -577,9 +581,9 @@ def is_antisymmetric_wave(wave_name: Optional[str]) -> bool:
 def wave_longitude_projection(
     data: xr.DataArray,
     *,
-    wave_name: Optional[str] = None,
-    lat_band: Tuple[float, float] = (-5.0, 5.0),
-    antisymmetric_lat_band: Tuple[float, float] = (-10.0, 10.0),
+    wave_name: str | None = None,
+    lat_band: tuple[float, float] = (-5.0, 5.0),
+    antisymmetric_lat_band: tuple[float, float] = (-10.0, 10.0),
 ) -> xr.DataArray:
     """Project a wave onto longitude using a symmetry-aware meridional average."""
     if "lat" not in data.dims:
@@ -638,9 +642,9 @@ def _case07_latitude_weights(data: xr.DataArray) -> xr.DataArray:
 def detect_wave_events(
     filtered_olr: xr.DataArray,
     *,
-    wave_name: Optional[str] = None,
-    lat_band: Tuple[float, float] = (-5.0, 5.0),
-    antisymmetric_lat_band: Tuple[float, float] = (-10.0, 10.0),
+    wave_name: str | None = None,
+    lat_band: tuple[float, float] = (-5.0, 5.0),
+    antisymmetric_lat_band: tuple[float, float] = (-10.0, 10.0),
     lon_ref: float = 180.0,
     sign: str = "negative",
     threshold_std: float = 1.0,
@@ -704,9 +708,9 @@ def detect_point_events(
 def select_hovmoller_window(
     filtered_olr: xr.DataArray,
     *,
-    wave_name: Optional[str] = None,
-    lat_band: Tuple[float, float] = (-5.0, 5.0),
-    antisymmetric_lat_band: Tuple[float, float] = (-10.0, 10.0),
+    wave_name: str | None = None,
+    lat_band: tuple[float, float] = (-5.0, 5.0),
+    antisymmetric_lat_band: tuple[float, float] = (-10.0, 10.0),
     lon_ref: float = 180.0,
     window_days: int = 180,
 ) -> slice:
@@ -730,8 +734,8 @@ def select_hovmoller_window(
 def _hovmoller_projection(
     data: xr.DataArray,
     *,
-    wave_name: Optional[str] = None,
-    lat_band: Tuple[float, float] = (-5.0, 5.0),
+    wave_name: str | None = None,
+    lat_band: tuple[float, float] = (-5.0, 5.0),
 ) -> xr.DataArray:
     """Return the longitude projection used for Case 03 diagnostics."""
     wave_key = wave_name.lower() if wave_name is not None else None
@@ -800,7 +804,7 @@ def _lagged_regression_slope(
     predictand: xr.DataArray,
     *,
     lags: Sequence[int],
-    active_mask: Optional[xr.DataArray] = None,
+    active_mask: xr.DataArray | None = None,
 ) -> xr.DataArray:
     """Regress a lagged predictand onto one predictor and stack slopes by lag."""
     patterns: list[xr.DataArray] = []
@@ -888,12 +892,12 @@ def compute_case10_regression_hovmoller(
 def compute_wave_eof(
     data: xr.DataArray,
     *,
-    wave_name: Optional[str] = None,
+    wave_name: str | None = None,
     n_modes: int = 2,
 ) -> tuple[xr.DataArray, xr.DataArray, np.ndarray, xr.DataArray]:
     """Compute wave-aware EOFs and return the analyzed OLR field used for fitting."""
     wave_key = wave_name.lower() if wave_name is not None else None
-    lat_range = CASE07_WAVE_LAT_RANGES.get(wave_key, None)
+    lat_range = CASE07_WAVE_LAT_RANGES.get(wave_key)
     projection = CASE07_WAVE_PROJECTIONS.get(wave_key, "full")
     analysis_field = data
     if lat_range is not None and "lat" in analysis_field.dims:
@@ -954,8 +958,8 @@ def _save_wk_triplet(
     dataset: xr.Dataset,
     output_root: Path,
     *,
-    spectral_lat_range: Tuple[float, float] = (-15.0, 15.0),
-    spectral_config: Optional[SpectralConfig] = None,
+    spectral_lat_range: tuple[float, float] = (-15.0, 15.0),
+    spectral_config: SpectralConfig | None = None,
 ) -> None:
     """Generate WK spectra for OLR, U850, and V850."""
     spectra_dir = output_root / "spectra"
@@ -975,10 +979,10 @@ def generate_local_wave_atlas(
     olr_path: PathLike = DEFAULT_LOCAL_PATHS["olr"],
     u850_path: PathLike = DEFAULT_LOCAL_PATHS["u850"],
     v850_path: PathLike = DEFAULT_LOCAL_PATHS["v850"],
-    waves: Optional[Iterable[str]] = None,
-    time_range: Optional[Tuple[str, str]] = ("1979-01-01", "2014-12-31"),
-    lat_range: Tuple[float, float] = (-20.0, 20.0),
-    lat_band: Tuple[float, float] = (-5.0, 5.0),
+    waves: Iterable[str] | None = None,
+    time_range: tuple[str, str] | None = ("1979-01-01", "2014-12-31"),
+    lat_range: tuple[float, float] = (-20.0, 20.0),
+    lat_band: tuple[float, float] = (-5.0, 5.0),
     lon_ref: float = 180.0,
     hovmoller_days: int = 180,
     event_threshold_std: float = 1.0,
@@ -1114,7 +1118,7 @@ def generate_local_wave_atlas(
             threshold_std=event_threshold_std,
             min_distance_days=event_min_spacing_days,
         )
-        event_note: Optional[str] = None
+        event_note: str | None = None
         if event_indices.size == 0:
             reference_values = np.asarray(reference.values, dtype=float)
             if np.any(np.isfinite(reference_values)):

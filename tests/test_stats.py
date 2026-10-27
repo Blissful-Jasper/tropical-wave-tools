@@ -3,7 +3,12 @@ from __future__ import annotations
 import numpy as np
 import xarray as xr
 
-from tropical_wave_tools.stats import linear_regression, linear_trend, one_sample_ttest, pearson_correlation
+from tropical_wave_tools.stats import (
+    linear_regression,
+    linear_trend,
+    one_sample_ttest,
+    pearson_correlation,
+)
 
 
 def test_linear_trend_returns_slope_and_intercept(synthetic_wave_data) -> None:

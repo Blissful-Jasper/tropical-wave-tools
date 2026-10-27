@@ -4,12 +4,12 @@ import numpy as np
 
 from tropical_wave_tools.matsuno import (
     ANGULAR_TO_CPD,
+    GRAVITY,
     _cubic_mode_roots,
     beta_parameters,
     eig_n,
     eig_n_0,
     er_n,
-    GRAVITY,
     kelvin_mode,
     mrg_mode,
     wig_n,
@@ -51,7 +51,7 @@ def test_westward_ig_curve_is_westward_only():
 
 
 def test_westward_ig_uses_fast_positive_root_on_negative_wavenumbers():
-    wn, westward_root, _, eastward_root = _cubic_mode_roots(25.0, 2, max_wn=10, n_wn=21)
+    wn, _westward_root, _, eastward_root = _cubic_mode_roots(25.0, 2, max_wn=10, n_wn=21)
     wig2 = _series_values(wig_n(25.0, 2, max_wn=10, n_wn=21))
     expected = np.where(wn < 0.0, np.abs(eastward_root) * ANGULAR_TO_CPD, np.nan)
     mask = wn < 0.0

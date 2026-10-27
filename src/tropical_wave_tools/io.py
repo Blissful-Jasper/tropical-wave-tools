@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Dict, Iterable, Optional, Tuple, Union
+from typing import Union
 
 import numpy as np
 import xarray as xr
 
 from tropical_wave_tools.exceptions import InvalidDataArrayError
-
 
 PathLike = Union[str, Path]
 XarrayLike = Union[xr.Dataset, xr.DataArray]
@@ -20,7 +20,7 @@ STANDARD_DIM_CANDIDATES = {
 }
 
 
-def _find_standard_name(names: Iterable[str], standard_name: str) -> Optional[str]:
+def _find_standard_name(names: Iterable[str], standard_name: str) -> str | None:
     candidates = STANDARD_DIM_CANDIDATES[standard_name]
     lowered = {name.lower(): name for name in names}
 
@@ -40,7 +40,7 @@ def _find_standard_name(names: Iterable[str], standard_name: str) -> Optional[st
 
 def rename_standard_coordinates(data: XarrayLike) -> XarrayLike:
     """Rename common climate-analysis coordinate aliases to ``time/lat/lon``."""
-    rename_map: Dict[str, str] = {}
+    rename_map: dict[str, str] = {}
     known_names = list(data.dims) + list(data.coords)
 
     for standard_name in ("time", "lat", "lon"):
@@ -99,7 +99,7 @@ def _mask_out_of_valid_range(data: xr.DataArray) -> xr.DataArray:
 
     try:
         bounds = np.asarray(valid_range, dtype=float).ravel()
-    except Exception:
+    except (TypeError, ValueError):
         return data
     if bounds.size < 2 or not np.all(np.isfinite(bounds[:2])):
         return data
@@ -118,7 +118,7 @@ def _ensure_nonempty(data: xr.DataArray, *, context: str) -> xr.DataArray:
     return data
 
 
-def to_dataarray(data: XarrayLike, variable: Optional[str] = None) -> xr.DataArray:
+def to_dataarray(data: XarrayLike, variable: str | None = None) -> xr.DataArray:
     """Convert a Dataset/DataArray input into a DataArray."""
     standardized = rename_standard_coordinates(data)
     if isinstance(standardized, xr.DataArray):
@@ -183,7 +183,7 @@ def sort_latitude(data: XarrayLike, *, ascending: bool = True) -> XarrayLike:
 def standardize_data(
     data: XarrayLike,
     *,
-    variable: Optional[str] = None,
+    variable: str | None = None,
     lon_target: str = "0_360",
     lat_ascending: bool = True,
 ) -> xr.DataArray:
@@ -195,7 +195,7 @@ def standardize_data(
     return ensure_time_lat_lon(array)
 
 
-def _normalize_slice(bounds: Optional[Tuple[float, float]]) -> Optional[slice]:
+def _normalize_slice(bounds: tuple[float, float] | None) -> slice | None:
     if bounds is None:
         return None
     lower, upper = bounds
@@ -207,7 +207,7 @@ def _normalize_slice(bounds: Optional[Tuple[float, float]]) -> Optional[slice]:
 def load_dataset(
     path: PathLike,
     *,
-    chunks: Optional[Dict[str, int]] = None,
+    chunks: dict[str, int] | None = None,
     lon_target: str = "0_360",
     lat_ascending: bool = True,
 ) -> xr.Dataset:
@@ -221,12 +221,12 @@ def load_dataset(
 
 def load_dataarray(
     path: PathLike,
-    variable: Optional[str] = None,
+    variable: str | None = None,
     *,
-    lat_range: Optional[Tuple[float, float]] = None,
-    lon_range: Optional[Tuple[float, float]] = None,
-    time_range: Optional[Tuple[str, str]] = None,
-    chunks: Optional[Dict[str, int]] = None,
+    lat_range: tuple[float, float] | None = None,
+    lon_range: tuple[float, float] | None = None,
+    time_range: tuple[str, str] | None = None,
+    chunks: dict[str, int] | None = None,
     sort_lat: bool = True,
     lon_target: str = "0_360",
 ) -> xr.DataArray:
@@ -259,10 +259,10 @@ def load_dataarray(
     return _ensure_nonempty(data, context=f"Selected data from {Path(path).name}")
 
 
-def describe_dataarray(data: xr.DataArray) -> Dict[str, object]:
+def describe_dataarray(data: xr.DataArray) -> dict[str, object]:
     """Return a compact metadata summary for logging or docs."""
     data = _ensure_nonempty(data, context="Cannot summarize an empty DataArray")
-    summary: Dict[str, object] = {
+    summary: dict[str, object] = {
         "name": data.name,
         "shape": tuple(int(value) for value in data.shape),
         "dims": tuple(str(dim) for dim in data.dims),
@@ -303,6 +303,6 @@ def save_dataset(dataset: xr.Dataset, path: PathLike) -> Path:
     return output_path
 
 
-def describe_many(dataarrays: Iterable[xr.DataArray]) -> list[Dict[str, object]]:
+def describe_many(dataarrays: Iterable[xr.DataArray]) -> list[dict[str, object]]:
     """Summarize multiple data arrays."""
     return [describe_dataarray(data) for data in dataarrays]

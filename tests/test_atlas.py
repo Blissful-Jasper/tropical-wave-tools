@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import xarray as xr
 import numpy as np
+import xarray as xr
 
 from tropical_wave_tools.atlas import (
     _case07_component_field,

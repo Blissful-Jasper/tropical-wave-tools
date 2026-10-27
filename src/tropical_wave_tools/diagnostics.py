@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import warnings
-from typing import Optional, Tuple
 
 import numpy as np
 import xarray as xr
 
-from tropical_wave_tools.io import normalize_longitude, rename_standard_coordinates, standardize_data
+from tropical_wave_tools.io import (
+    normalize_longitude,
+    rename_standard_coordinates,
+    standardize_data,
+)
 
 CP = 1004.0
 GRAVITY = 9.81
@@ -31,8 +34,8 @@ def meridional_mean(data: xr.DataArray, *, dim: str = "lat") -> xr.DataArray:
 def area_weighted_mean(
     data: xr.DataArray,
     *,
-    lat_range: Optional[Tuple[float, float]] = None,
-    lon_range: Optional[Tuple[float, float]] = None,
+    lat_range: tuple[float, float] | None = None,
+    lon_range: tuple[float, float] | None = None,
 ) -> xr.DataArray:
     """Compute a cosine-latitude weighted regional mean."""
     array = standardize_data(data)
@@ -53,7 +56,7 @@ def area_weighted_mean(
     return array.weighted(weights).mean(dim=("lat", "lon"))
 
 
-def compute_dx_dy(lat: xr.DataArray, lon: xr.DataArray) -> Tuple[np.ndarray, np.ndarray]:
+def compute_dx_dy(lat: xr.DataArray, lon: xr.DataArray) -> tuple[np.ndarray, np.ndarray]:
     """Compute regular-grid spacing in meters."""
     lat_values = np.asarray(lat.values, dtype=float)
     lon_values = np.asarray(lon.values, dtype=float)
@@ -116,7 +119,8 @@ def _metpy_vector_calculus(
 ) -> xr.DataArray:
     try:
         from metpy.calc import divergence as mp_divergence
-        from metpy.calc import lat_lon_grid_deltas, vorticity as mp_vorticity
+        from metpy.calc import lat_lon_grid_deltas
+        from metpy.calc import vorticity as mp_vorticity
         from metpy.units import units
     except Exception as exc:  # pragma: no cover - depends on optional binary stack
         raise RuntimeError("MetPy diagnostics are unavailable in this environment.") from exc

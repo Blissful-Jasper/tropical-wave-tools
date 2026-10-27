@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
 import xarray as xr
 
 from tropical_wave_tools.io import rename_standard_coordinates, standardize_data, to_dataarray
@@ -21,8 +19,8 @@ from tropical_wave_tools.preprocessing import (
 def select_region(
     data: xr.DataArray,
     *,
-    lat_range: Optional[Tuple[float, float]] = None,
-    lon_range: Optional[Tuple[float, float]] = None,
+    lat_range: tuple[float, float] | None = None,
+    lon_range: tuple[float, float] | None = None,
     lon_target: str = "0_360",
 ) -> xr.DataArray:
     """Select a latitude-longitude region after coordinate normalization."""
@@ -47,7 +45,7 @@ def select_region(
 def select_time(
     data: xr.DataArray,
     *,
-    time_range: Tuple[str, str],
+    time_range: tuple[str, str],
 ) -> xr.DataArray:
     """Subset a time range."""
     array = rename_standard_coordinates(to_dataarray(data))
@@ -102,7 +100,7 @@ def monthly_mean(data: xr.DataArray) -> xr.DataArray:
 def seasonal_mean(
     data: xr.DataArray,
     *,
-    season: Optional[str] = None,
+    season: str | None = None,
 ) -> xr.DataArray:
     """
     Compute seasonal means.

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence
 
 from tropical_wave_tools.atlas import DEFAULT_LOCAL_PATHS, generate_local_wave_atlas
 from tropical_wave_tools.filters import filter_wave_signal
@@ -20,10 +20,10 @@ from tropical_wave_tools.workflows import (
 
 
 def _resolve_time_range(
-    time_start: Optional[str],
-    time_end: Optional[str],
-    demo_years: Optional[int] = None,
-) -> Optional[tuple[str, str]]:
+    time_start: str | None,
+    time_end: str | None,
+    demo_years: int | None = None,
+) -> tuple[str, str] | None:
     """Resolve one explicit or demo-style time range."""
     if time_start is None or time_end is None:
         if demo_years is not None:
@@ -140,7 +140,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """CLI entry point."""
     parser = build_parser()
     args = parser.parse_args(argv)

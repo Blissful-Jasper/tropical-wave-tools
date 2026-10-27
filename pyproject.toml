@@ -26,13 +26,16 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "Topic :: Scientific/Engineering :: Atmospheric Science",
 ]
 dependencies = [
   "joblib>=1.2",
   "matplotlib>=3.5",
-  "numpy>=1.23,<2",
+  "netCDF4>=1.6",
+  "numpy>=1.23",
   "pandas>=1.4",
   "scipy>=1.9",
   "xarray>=2022.3",
@@ -108,9 +111,19 @@ select = [
   "RUF",
 ]
 ignore = [
+  "E501",   # long lines: wrapped incrementally, formatter-owned
   "N803",
   "N806",
+  "RUF001", # intentional CJK / math glyphs in labels
+  "RUF002",
+  "RUF003",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*" = ["E402"]
+"src/tropical_wave_tools/cross_spectrum.py" = ["N802"]
+"examples/*" = ["E402"]
+"tests/*" = ["E402"]
 
 [tool.pytest.ini_options]
 minversion = "7.1"

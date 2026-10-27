@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "tropical-wave-tools"
+type: software
+version: 0.1.0
+license: MIT
+authors:
+  - name: "Jianpu"
+repository-code: "https://github.com/Blissful-Jasper/tropical-wave-tools"
+url: "https://Blissful-Jasper.github.io/tropical-wave-tools/"
+keywords:
+  - equatorial waves
+  - Wheeler-Kiladis
+  - tropical meteorology
+references:
+  - type: article
+    authors:
+      - family-names: Wheeler
+        given-names: Matthew
+      - family-names: Kiladis
+        given-names: George N.
+    title: "Convectively coupled equatorial waves: Analysis of clouds and temperature in the wavenumber-frequency domain"
+    journal: "Journal of the Atmospheric Sciences"
+    volume: 56
+    start: 374
+    end: 399
+    year: 1999

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from functools import reduce
-from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -17,7 +16,7 @@ SECONDS_PER_DAY = 24.0 * 60.0 * 60.0
 ANGULAR_TO_CPD = SECONDS_PER_DAY / (2.0 * PI)
 
 
-def beta_parameters(latitude: float) -> Tuple[float, float]:
+def beta_parameters(latitude: float) -> tuple[float, float]:
     """Return beta-plane parameter and latitude-circle perimeter."""
     beta = 2.0 * EARTH_OMEGA * np.cos(abs(latitude) * DEG2RAD) / EARTH_RADIUS
     perimeter = 2.0 * PI * EARTH_RADIUS * np.cos(abs(latitude) * DEG2RAD)
@@ -34,7 +33,7 @@ def wn2k(wn: np.ndarray, perimeter: float) -> np.ndarray:
     return (2.0 * PI * wn) / perimeter
 
 
-def afreq2freq(angular_frequency: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def afreq2freq(angular_frequency: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Convert angular frequency to period and cycles per day."""
     frequency = np.asarray(angular_frequency, dtype=float) * ANGULAR_TO_CPD
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -68,7 +67,7 @@ def _cubic_mode_roots(
     latitude: float = 0.0,
     max_wn: int = 50,
     n_wn: int = 500,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Return signed cubic roots for WIG, ER, and EIG branches."""
     beta, perimeter = beta_parameters(latitude)
     wn = wn_array(max_wn, n_wn)
@@ -85,10 +84,7 @@ def _cubic_mode_roots(
         ]
         root_values = np.roots(coefficients)
         real_roots = np.real(root_values[np.isclose(np.imag(root_values), 0.0, atol=1.0e-10)])
-        if real_roots.size != 3:
-            real_roots = np.sort(np.real(root_values))
-        else:
-            real_roots = np.sort(real_roots)
+        real_roots = np.sort(np.real(root_values)) if real_roots.size != 3 else np.sort(real_roots)
         roots[index, :] = real_roots
 
     return wn, roots[:, 0], roots[:, 1], roots[:, 2]
@@ -218,7 +214,7 @@ def wig_n(
 def matsuno_dataframe(
     he: float,
     *,
-    n: Tuple[int, ...] = (1, 2, 3),
+    n: tuple[int, ...] = (1, 2, 3),
     latitude: float = 0.0,
     max_wn: int = 50,
     n_wn: int = 500,
@@ -234,12 +230,12 @@ def matsuno_dataframe(
 
 def matsuno_modes_wk(
     *,
-    he: Tuple[float, ...] = (12.0, 25.0, 50.0),
-    n: Tuple[int, ...] = (1,),
+    he: tuple[float, ...] = (12.0, 25.0, 50.0),
+    n: tuple[int, ...] = (1,),
     latitude: float = 0.0,
     max_wn: int = 20,
     n_wn: int = 500,
-) -> Dict[float, pd.DataFrame]:
+) -> dict[float, pd.DataFrame]:
     """Return Matsuno curves for each equivalent depth."""
     return {
         depth: matsuno_dataframe(depth, n=list(n), latitude=latitude, max_wn=max_wn, n_wn=n_wn)

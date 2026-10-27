@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import re
+import warnings
+from collections.abc import Sequence
 from contextlib import contextmanager
 from pathlib import Path
-import re
-from typing import List, Optional, Sequence, Tuple, Union
-import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -178,13 +178,13 @@ SCIENTIFIC_MPL_STYLE: dict[str, object] = {
 }
 
 
-def get_publication_cmap(name: str) -> Union[str, LinearSegmentedColormap]:
+def get_publication_cmap(name: str) -> str | LinearSegmentedColormap:
     """Return one of the package publication colormaps."""
     return PUBLICATION_CMAPS.get(name, name)
 
 
 @contextmanager
-def scientific_plot_style(overrides: Optional[dict[str, object]] = None):
+def scientific_plot_style(overrides: dict[str, object] | None = None):
     """Apply a consistent research-figure style inside a plotting context."""
     style = dict(SCIENTIFIC_MPL_STYLE)
     if overrides:
@@ -193,7 +193,7 @@ def scientific_plot_style(overrides: Optional[dict[str, object]] = None):
         yield
 
 
-def use_scientific_style(overrides: Optional[dict[str, object]] = None) -> None:
+def use_scientific_style(overrides: dict[str, object] | None = None) -> None:
     """Apply the package plotting style globally for scripts or notebooks."""
     style = dict(SCIENTIFIC_MPL_STYLE)
     if overrides:
@@ -264,8 +264,8 @@ def _format_longitude_label(value: float) -> str:
     if np.isclose(lon, 180.0):
         return "180"
     if lon < 180.0:
-        return f"{int(round(lon))}E"
-    return f"{int(round(360.0 - lon))}W"
+        return f"{round(lon)}E"
+    return f"{round(360.0 - lon)}W"
 
 
 def _nice_step(span: float, *, target_steps: int = 8, integer: bool = False) -> float:
@@ -304,7 +304,7 @@ def _quiver_reference_value(
 
 def _journal_quiver_kwargs(
     *,
-    quiver_scale: Optional[float],
+    quiver_scale: float | None,
     width: float = 0.0020,
     headwidth: float = 4.2,
     headlength: float = 5.3,
@@ -443,9 +443,9 @@ def _plot_zonal_wind_contours(
     axis: plt.Axes,
     zonal_wind: xr.DataArray,
     *,
-    levels: Optional[np.ndarray] = None,
+    levels: np.ndarray | None = None,
     use_cartopy: bool = False,
-    data_crs: Optional[object] = None,
+    data_crs: object | None = None,
 ) -> None:
     """Overlay zonal-wind contours using solid/dashed lines for sign."""
     contour_levels = _signed_levels_from_data(zonal_wind) if levels is None else np.asarray(levels, dtype=float)
@@ -490,11 +490,11 @@ def _overlay_anomaly_contours(
     axis: plt.Axes,
     field: xr.DataArray,
     *,
-    levels: Optional[np.ndarray] = None,
-    x: Optional[str] = None,
-    y: Optional[str] = None,
+    levels: np.ndarray | None = None,
+    x: str | None = None,
+    y: str | None = None,
     use_cartopy: bool = False,
-    data_crs: Optional[object] = None,
+    data_crs: object | None = None,
 ) -> None:
     """Overlay sparse anomaly contours to sharpen structure boundaries."""
     contour_levels = _signed_levels_from_data(field, target_steps=6) if levels is None else np.asarray(levels, dtype=float)
@@ -619,7 +619,7 @@ def _continuous_symmetric_levels_from_data(
     count: int = 19,
     target_tick_steps: int = 8,
     range_scale: float = 1.0,
-    minimum_vmax: Optional[float] = None,
+    minimum_vmax: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray, float]:
     """Build symmetric continuous contour levels with evenly spaced endpoint ticks."""
     vmax = _symmetric_limit(data, quantile=quantile)
@@ -642,10 +642,7 @@ def _scientific_integer_levels_from_data(
     pad_fraction: float = 0.04,
 ) -> tuple[np.ndarray, np.ndarray, float]:
     """Build symmetric continuous levels with integer ticks under a scientific-scale factor."""
-    if quantile >= 1.0:
-        vmax = _finite_abs_max(data)
-    else:
-        vmax = _symmetric_limit(data, quantile=quantile)
+    vmax = _finite_abs_max(data) if quantile >= 1.0 else _symmetric_limit(data, quantile=quantile)
     if not np.isfinite(vmax) or vmax <= 0.0:
         vmax = 1.0
     vmax *= max(1.0 + float(pad_fraction), 1.0)
@@ -663,7 +660,7 @@ def _scientific_integer_levels_from_data(
 def _style_colorbar(
     cbar: object,
     *,
-    ticks: Optional[np.ndarray] = None,
+    ticks: np.ndarray | None = None,
     integer: bool = False,
     scientific_integer: bool = False,
 ) -> None:
@@ -691,12 +688,12 @@ def _add_shared_colorbar(
     *,
     label: str,
     orientation: str = "vertical",
-    ticks: Optional[np.ndarray] = None,
+    ticks: np.ndarray | None = None,
     integer: bool = False,
-    pad: Optional[float] = None,
-    shrink: Optional[float] = None,
-    aspect: Optional[float] = None,
-    fraction: Optional[float] = None,
+    pad: float | None = None,
+    shrink: float | None = None,
+    aspect: float | None = None,
+    fraction: float | None = None,
 ):
     """Attach one publication-style colorbar shared by a set of axes."""
     panel_axes = list(axes)
@@ -867,7 +864,7 @@ def _set_map_extent_from_field(ax: plt.Axes, data: xr.DataArray, data_crs: objec
             ax.set_global()
 
 
-def _wave_title_name(wave_name: Optional[str]) -> str:
+def _wave_title_name(wave_name: str | None) -> str:
     """Return a publication-friendly wave label."""
     if wave_name is None:
         return "Wave"
@@ -881,7 +878,7 @@ def _wave_title_name(wave_name: Optional[str]) -> str:
     return mapping.get(wave_name.lower(), wave_name.upper())
 
 
-def _case07_focus_half_width(wave_name: Optional[str]) -> float:
+def _case07_focus_half_width(wave_name: str | None) -> float:
     """Return a longitude half-width tuned for Case 07 focused maps."""
     widths = {
         "kelvin": 75.0,
@@ -935,9 +932,9 @@ def _subset_longitude_window(
 
 def get_cckw_envelope_curve(
     *,
-    he: Optional[Sequence[float]] = None,
-    fmax: Optional[Sequence[float]] = None,
-) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    he: Sequence[float] | None = None,
+    fmax: Sequence[float] | None = None,
+) -> tuple[list[np.ndarray], list[np.ndarray]]:
     """Return polygon coordinates for the CCKW envelope."""
     he = list(he) if he is not None else [8.0, 25.0, 90.0]
     fmax = list(fmax) if fmax is not None else [1 / 3, 1 / 2.25, 0.5]
@@ -976,7 +973,7 @@ def get_cckw_envelope_curve(
     return [x_curve], [y_curve]
 
 
-def save_figure(figure: plt.Figure, path: Union[str, Path], *, dpi: int = 200) -> Path:
+def save_figure(figure: plt.Figure, path: str | Path, *, dpi: int = 200) -> Path:
     """Save a figure and return its output path."""
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1092,7 +1089,7 @@ def _set_wk_legend(
     ax: plt.Axes,
     *,
     allowed_labels: Sequence[str],
-    rename_map: Optional[dict[str, str]] = None,
+    rename_map: dict[str, str] | None = None,
     **legend_kwargs: object,
 ) -> None:
     """Keep only the requested WK legend entries and rename them if needed."""
@@ -1120,10 +1117,10 @@ def _set_wk_legend(
 def plot_time_series(
     data: xr.DataArray,
     *,
-    ax: Optional[plt.Axes] = None,
-    title: Optional[str] = None,
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    ax: plt.Axes | None = None,
+    title: str | None = None,
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """Plot a simple time series."""
     with scientific_plot_style():
         if ax is None:
@@ -1143,19 +1140,19 @@ def plot_time_series(
 def plot_latlon_field(
     data: xr.DataArray,
     *,
-    ax: Optional[plt.Axes] = None,
-    title: Optional[str] = None,
-    cmap: Union[str, LinearSegmentedColormap] = "olr_diverging",
-    levels: Optional[int] = None,
-    use_cartopy: Optional[bool] = None,
-    colorbar_label: Optional[str] = None,
+    ax: plt.Axes | None = None,
+    title: str | None = None,
+    cmap: str | LinearSegmentedColormap = "olr_diverging",
+    levels: int | None = None,
+    use_cartopy: bool | None = None,
+    colorbar_label: str | None = None,
     colorbar_orientation: str = "horizontal",
     integer_colorbar: bool = False,
     zero_floor_colorbar: bool = False,
     target_steps: int = 8,
     level_count: int = 19,
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """Plot a latitude-longitude field with optional cartopy support."""
     with scientific_plot_style():
         use_cartopy = (ccrs is not None) if use_cartopy is None else use_cartopy
@@ -1261,14 +1258,14 @@ def plot_hovmoller_comparison(
     right_title: str = "Filtered signal",
     x: str = "lon",
     y: str = "time",
-    cmap: Union[str, LinearSegmentedColormap] = "wave_diverging",
+    cmap: str | LinearSegmentedColormap = "wave_diverging",
     quantile: float = 0.98,
     colorbar_label: str = "Amplitude",
     colorbar_orientation: str = "vertical",
     integer_colorbar: bool = False,
     colorbar_extend: str = "neither",
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Plot two Hovmoller panels with a shared symmetric color scale."""
     with scientific_plot_style():
         cmap = get_publication_cmap(str(cmap)) if isinstance(cmap, str) else cmap
@@ -1341,12 +1338,12 @@ def plot_wk_spectrum(
     equivalent_depths: Sequence[float] = (12.0, 25.0, 50.0),
     kelvin_band_depths: Sequence[float] = (8.0, 25.0, 90.0),
     cpd_lines: Sequence[float] = (3.0, 6.0, 30.0),
-    cmap: Union[str, LinearSegmentedColormap] = "wk_power",
-    levels: Optional[np.ndarray] = None,
+    cmap: str | LinearSegmentedColormap = "wk_power",
+    levels: np.ndarray | None = None,
     colorbar_orientation: str = "vertical",
     annotate_filter_boxes: bool = True,
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Plot normalized symmetric and antisymmetric WK spectra."""
     with scientific_plot_style():
         cmap = get_publication_cmap(str(cmap)) if isinstance(cmap, str) else cmap
@@ -1504,9 +1501,9 @@ def plot_spatial_std_comparison(
     *,
     wave_name: str,
     title_suffix: str = "",
-    use_cartopy: Optional[bool] = None,
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    use_cartopy: bool | None = None,
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Plot legacy-vs-CCKW time-standard-deviation maps."""
     with scientific_plot_style():
         use_cartopy = (ccrs is not None) if use_cartopy is None else use_cartopy
@@ -1613,13 +1610,13 @@ def plot_hovmoller_triptych(
     fields: Sequence[xr.DataArray],
     *,
     titles: Sequence[str],
-    cmaps: Optional[Sequence[Union[str, LinearSegmentedColormap]]] = None,
-    colorbar_labels: Optional[Sequence[str]] = None,
+    cmaps: Sequence[str | LinearSegmentedColormap] | None = None,
+    colorbar_labels: Sequence[str] | None = None,
     x: str = "lon",
     y: str = "time",
     quantile: float = 0.98,
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Plot three Hovmoller panels with publication-style colorbars."""
     if len(fields) != len(titles):
         raise ValueError("`fields` and `titles` must have the same length.")
@@ -1665,18 +1662,18 @@ def plot_paper_style_hovmoller(
     *,
     title: str,
     base_point_label: str,
-    cmap: Union[str, LinearSegmentedColormap] = "paper_hovmoller_diverging",
+    cmap: str | LinearSegmentedColormap = "paper_hovmoller_diverging",
     figsize: tuple[float, float] = (7.2, 5.0),
     shading_label: str = "Regressed convection proxy (W m$^{-2}$)",
     shading_quantile: float = 0.985,
     shading_level_count: int = 37,
     shading_range_scale: float = 1.0,
-    shading_min_vmax: Optional[float] = None,
+    shading_min_vmax: float | None = None,
     contour_target_steps: int = 6,
     contour_quantile: float = 0.98,
-    xticks: Optional[Sequence[float]] = None,
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    xticks: Sequence[float] | None = None,
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """Plot a Lubis & Jacobi style lagged-regression Hovmoller panel."""
     if not {"lag", "lon"}.issubset(shading.dims) or not {"lag", "lon"}.issubset(contours.dims):
         raise ValueError("`shading` and `contours` must contain lag/lon dimensions.")
@@ -1796,9 +1793,9 @@ def plot_spatial_std_triptych(
     v_std: xr.DataArray,
     *,
     titles: Sequence[str] = ("Filtered OLR STD", "Filtered U850 STD", "Filtered V850 STD"),
-    use_cartopy: Optional[bool] = None,
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    use_cartopy: bool | None = None,
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Plot a projected OLR/U850/V850 standard-deviation triptych."""
     with scientific_plot_style():
         use_cartopy = (ccrs is not None) if use_cartopy is None else use_cartopy
@@ -1870,14 +1867,14 @@ def plot_wave_spatial_comparison(
     titles: Sequence[str],
     colorbar_label: str = "Filtered OLR STD",
     colorbar_orientation: str = "vertical",
-    use_cartopy: Optional[bool] = None,
+    use_cartopy: bool | None = None,
     ncols: int = 2,
-    cmap: Union[str, LinearSegmentedColormap] = "wave_std",
+    cmap: str | LinearSegmentedColormap = "wave_std",
     integer_colorbar: bool = False,
     target_steps: int = 8,
     level_count: int = 19,
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Plot a grid comparing filtered spatial distributions across multiple waves."""
     if len(fields) != len(titles):
         raise ValueError("`fields` and `titles` must have the same length.")
@@ -1956,7 +1953,7 @@ def plot_wave_spatial_comparison(
                 )
 
         spare_axes = list(axes.flat[n_panels:])
-        auxiliary_axis: Optional[plt.Axes] = None
+        auxiliary_axis: plt.Axes | None = None
         if spare_axes and colorbar_orientation == "horizontal" and nrows > 1:
             auxiliary_axis = spare_axes[0]
             auxiliary_axis.set_visible(True)
@@ -2004,12 +2001,12 @@ def plot_wind_diagnostics_panel(
     *,
     titles: Sequence[str] = ("Low-level divergence", "Low-level vorticity"),
     quiver_stride: int = 4,
-    quiver_scale: Optional[float] = 55.0,
+    quiver_scale: float | None = 55.0,
     integer_colorbar: bool = True,
     colorbar_extend: str = "neither",
-    use_cartopy: Optional[bool] = None,
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    use_cartopy: bool | None = None,
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Plot divergence and vorticity maps with wind vectors."""
     with scientific_plot_style():
         use_cartopy = (ccrs is not None) if use_cartopy is None else use_cartopy
@@ -2092,10 +2089,10 @@ def plot_eof_spatial_patterns_and_pcs(
     explained_variance: Sequence[float],
     *,
     modes: Sequence[int] = (1, 2),
-    use_cartopy: Optional[bool] = None,
-    cmap: Union[str, LinearSegmentedColormap] = "olr_diverging",
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    use_cartopy: bool | None = None,
+    cmap: str | LinearSegmentedColormap = "olr_diverging",
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Plot EOF spatial patterns alongside their principal components."""
     with scientific_plot_style():
         if not {"mode", "lat", "lon"}.issubset(eofs.dims):
@@ -2189,15 +2186,15 @@ def plot_eof_modes_with_wind(
     explained_variance: Sequence[float],
     *,
     modes: Sequence[int] = (1, 2),
-    wave_name: Optional[str] = None,
+    wave_name: str | None = None,
     quiver_stride: int = 6,
-    quiver_scale: Optional[float] = 55.0,
-    use_cartopy: Optional[bool] = None,
-    cmap: Union[str, LinearSegmentedColormap] = "olr_diverging",
+    quiver_scale: float | None = 55.0,
+    use_cartopy: bool | None = None,
+    cmap: str | LinearSegmentedColormap = "olr_diverging",
     integer_colorbar: bool = True,
     field_label: str = "PC-regressed OLR (W m$^{-2}$)",
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Plot EOF-derived map patterns with regressed low-level wind vectors."""
     with scientific_plot_style():
         if not {"mode", "lat", "lon"}.issubset(eofs.dims):
@@ -2334,11 +2331,11 @@ def plot_lag_longitude_evolution(
     lagged_equatorial_field: xr.DataArray,
     *,
     title: str,
-    cmap: Union[str, LinearSegmentedColormap] = "olr_diverging",
+    cmap: str | LinearSegmentedColormap = "olr_diverging",
     integer_colorbar: bool = False,
     colorbar_extend: str = "neither",
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """Plot lag-versus-longitude evolution for a composite field."""
     with scientific_plot_style():
         if not {"lag", "lon"}.issubset(lagged_equatorial_field.dims):
@@ -2381,16 +2378,16 @@ def plot_horizontal_structure(
     u_field: xr.DataArray,
     v_field: xr.DataArray,
     *,
-    title: Optional[str] = None,
+    title: str | None = None,
     quiver_stride: int = 5,
-    quiver_scale: Optional[float] = 55.0,
+    quiver_scale: float | None = 55.0,
     colorbar_orientation: str = "horizontal",
     integer_colorbar: bool = False,
     colorbar_extend: str = "neither",
     wind_overlay: str = "auto",
-    use_cartopy: Optional[bool] = None,
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    use_cartopy: bool | None = None,
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """Plot one horizontal structure map with OLR shading and wind vectors."""
     with scientific_plot_style():
         use_cartopy = (ccrs is not None) if use_cartopy is None else use_cartopy
@@ -2494,10 +2491,10 @@ def plot_wave_horizontal_structure_comparison(
     ncols: int = 2,
     quiver_stride: int = 6,
     colorbar_orientation: str = "vertical",
-    quiver_scale: Optional[float] = 55.0,
-    use_cartopy: Optional[bool] = None,
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    quiver_scale: float | None = 55.0,
+    use_cartopy: bool | None = None,
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Compare lag-0 horizontal structures for multiple waves in one figure."""
     if not (len(olr_fields) == len(zonal_winds) == len(meridional_winds) == len(titles)):
         raise ValueError("All input sequences must have the same length.")
@@ -2586,7 +2583,7 @@ def plot_wave_horizontal_structure_comparison(
                 )
 
         spare_axes = list(axes.flat[n_panels:])
-        auxiliary_axis: Optional[plt.Axes] = None
+        auxiliary_axis: plt.Axes | None = None
         if spare_axes and colorbar_orientation == "horizontal" and nrows > 1:
             auxiliary_axis = spare_axes[0]
             auxiliary_axis.set_visible(True)
@@ -2618,30 +2615,30 @@ def plot_lagged_horizontal_structure(
     u_lagged: xr.DataArray,
     v_lagged: xr.DataArray,
     *,
-    lags: Optional[Sequence[int]] = None,
+    lags: Sequence[int] | None = None,
     ncols: int = 3,
     quiver_stride: int = 6,
-    quiver_scale: Optional[float] = 55.0,
+    quiver_scale: float | None = 55.0,
     colorbar_orientation: str = "horizontal",
     integer_colorbar: bool = False,
     colorbar_extend: str = "neither",
     olr_quantile: float = 0.98,
     olr_level_count: int = 19,
     olr_range_scale: float = 1.0,
-    olr_min_vmax: Optional[float] = None,
+    olr_min_vmax: float | None = None,
     wind_overlay: str = "auto",
     quiver_width: float = 0.0016,
     quiver_headwidth: float = 2.9,
     quiver_headlength: float = 3.7,
     quiver_headaxislength: float = 3.4,
     focus_longitude: bool = False,
-    focus_center_lon: Optional[float] = None,
-    focus_half_width: Optional[float] = None,
-    suptitle: Optional[str] = None,
+    focus_center_lon: float | None = None,
+    focus_half_width: float | None = None,
+    suptitle: str | None = None,
     panel_title_template: str = "Lag {lag:+d} d",
-    use_cartopy: Optional[bool] = None,
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    use_cartopy: bool | None = None,
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Plot lagged horizontal composites with OLR shading and low-level wind vectors."""
     with scientific_plot_style():
         use_cartopy = (ccrs is not None) if use_cartopy is None else use_cartopy
@@ -2779,7 +2776,7 @@ def plot_lagged_horizontal_structure(
             _add_panel_label(axis, chr(65 + panel_index))
 
         spare_axes = list(axes.flat[n_panels:])
-        auxiliary_axis: Optional[plt.Axes] = None
+        auxiliary_axis: plt.Axes | None = None
         if spare_axes and colorbar_orientation == "horizontal" and nrows > 1:
             auxiliary_axis = spare_axes[0]
             auxiliary_axis.set_visible(True)
@@ -2843,10 +2840,10 @@ def plot_wave_evolution_comparison(
     lags: Sequence[int] = (-6, 0, 6),
     quiver_stride: int = 6,
     colorbar_orientation: str = "vertical",
-    quiver_scale: Optional[float] = 55.0,
-    use_cartopy: Optional[bool] = None,
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    quiver_scale: float | None = 55.0,
+    use_cartopy: bool | None = None,
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Compare OLR-wind horizontal evolution across multiple waves and lags."""
     if not (
         len(olr_lagged_fields)
@@ -2967,8 +2964,8 @@ def plot_monthly_cycle(
     *,
     title: str,
     ylabel: str,
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """Plot a monthly cycle for multiple variables."""
     colors = ("#0f766e", "#9a3412", "#334155", "#7c3aed")
     with scientific_plot_style():
@@ -3002,8 +2999,8 @@ def plot_case05_seasonal_variance_cycles(
     *,
     wave_order: Sequence[str] = ("kelvin", "er", "mrg", "td"),
     ylabel: str = "Variance contribution [%]",
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Plot a Fig. 12 style seasonal cycle of variance fractions for four waves."""
     with scientific_plot_style():
         figure, axes = plt.subplots(2, 2, figsize=(10.4, 7.2), dpi=220, constrained_layout=False)
@@ -3066,11 +3063,11 @@ def plot_case05_regional_variance_cycles(
     *,
     region_order: Sequence[str],
     wave_order: Sequence[str] = ("kelvin", "er", "mrg", "td"),
-    region_labels: Optional[dict[str, str]] = None,
+    region_labels: dict[str, str] | None = None,
     ylabel: str = "Variance contribution [%]",
     note_text: str = "Monthly mean ± 1σ\n20°S–20°N regional mean\nVariance fraction",
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Plot a Fig. 14 style regional seasonal-cycle comparison across waves."""
     with scientific_plot_style():
         figure, axes = plt.subplots(4, 2, figsize=(12.2, 11.2), dpi=220, constrained_layout=False)
@@ -3164,10 +3161,10 @@ def plot_monthly_longitude_heatmap(
     data: xr.DataArray,
     *,
     title: str,
-    cmap: Union[str, LinearSegmentedColormap] = "seasonal",
+    cmap: str | LinearSegmentedColormap = "seasonal",
     colorbar_label: str = "Projected monthly RMS",
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """Plot a month-longitude heatmap for seasonal wave evolution."""
     with scientific_plot_style():
         cmap = get_publication_cmap(str(cmap)) if isinstance(cmap, str) else cmap
@@ -3204,10 +3201,10 @@ def plot_multiwave_eof_summary(
     explained_variances: Sequence[float],
     *,
     wave_names: Sequence[str],
-    use_cartopy: Optional[bool] = None,
-    cmap: Union[str, LinearSegmentedColormap] = "olr_diverging",
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    use_cartopy: bool | None = None,
+    cmap: str | LinearSegmentedColormap = "olr_diverging",
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Plot EOF-1 spatial patterns and PC-1 time series for multiple waves."""
     if not (len(eof_fields) == len(pc_series_list) == len(explained_variances) == len(wave_names)):
         raise ValueError("All multi-wave EOF inputs must have the same length.")
@@ -3297,11 +3294,11 @@ def plot_wave_monthly_cycle_comparison(
     *,
     wave_names: Sequence[str],
     ncols: int = 3,
-    monthly_significance: Optional[dict[str, dict[str, xr.DataArray]]] = None,
+    monthly_significance: dict[str, dict[str, xr.DataArray]] | None = None,
     normalize_each_series: bool = False,
     normalization: str = "annual_mean",
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Plot monthly RMS annual cycles for multiple waves."""
     with scientific_plot_style():
         n_panels = len(wave_names)
@@ -3399,11 +3396,11 @@ def plot_wave_monthly_longitude_comparison(
     *,
     wave_names: Sequence[str],
     ncols: int = 3,
-    cmap: Union[str, LinearSegmentedColormap] = "seasonal",
+    cmap: str | LinearSegmentedColormap = "seasonal",
     colorbar_label: str = "Projected monthly RMS",
-    significance_fields: Optional[Sequence[xr.DataArray]] = None,
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    significance_fields: Sequence[xr.DataArray] | None = None,
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Plot month-longitude seasonal evolution for multiple waves."""
     if len(monthly_longitude_fields) != len(wave_names):
         raise ValueError("`monthly_longitude_fields` and `wave_names` must have the same length.")
@@ -3500,9 +3497,9 @@ def plot_wave_annual_trend_comparison(
     *,
     wave_names: Sequence[str],
     ncols: int = 3,
-    trend_pvalues: Optional[dict[str, float]] = None,
-    save_path: Optional[Union[str, Path]] = None,
-) -> Tuple[plt.Figure, np.ndarray]:
+    trend_pvalues: dict[str, float] | None = None,
+    save_path: str | Path | None = None,
+) -> tuple[plt.Figure, np.ndarray]:
     """Plot annual RMS time series with fitted linear trends for multiple waves."""
     with scientific_plot_style():
         n_panels = len(wave_names)

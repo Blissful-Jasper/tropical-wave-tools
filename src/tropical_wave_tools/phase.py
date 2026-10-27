@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
-from typing import Optional, Tuple
 
 import numpy as np
 import xarray as xr
 from joblib import Parallel, delayed
 from scipy.signal import butter, filtfilt
-import time
 
 
 def butter_lowpass_filter(data: np.ndarray, cutoff_freq: float, fs: float, order: int = 4) -> np.ndarray:
@@ -28,7 +27,7 @@ def remove_10d_from_daily_data(
     order: int = 4,
 ) -> np.ndarray:
     """Low-pass filter a ``(time, lat, lon)`` daily array to remove sub-10-day signals."""
-    nt, nlat, nlon = data.shape
+    _nt, nlat, nlon = data.shape
     filtered = np.empty_like(data)
     for lat_index in range(nlat):
         for lon_index in range(nlon):
@@ -84,7 +83,7 @@ def find_peak_influence_range(
     values: np.ndarray,
     value_std: float,
     n_std: float,
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """Return the time range influenced by a significant peak."""
     if np.abs(peak_value) < value_std * n_std:
         return peak_idx, peak_idx
@@ -152,7 +151,7 @@ def optimize_peak_detection(
     Nstd: float = 1.0,
     use_parallel: bool = True,
     n_jobs: int = -1,
-) -> Tuple[xr.DataArray, xr.DataArray]:
+) -> tuple[xr.DataArray, xr.DataArray]:
     """Detect local extrema and assign significant-peak influence ranges."""
     nt, nlon = values.shape
     start_time = time.time()
@@ -284,9 +283,9 @@ def phase_composite(
     data: xr.DataArray,
     phase: xr.DataArray,
     *,
-    n_bins: Optional[int] = None,
-    phase_range: Tuple[float, float] = (-np.pi, np.pi),
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    n_bins: int | None = None,
+    phase_range: tuple[float, float] = (-np.pi, np.pi),
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Composite data by phase bins."""
     from scipy import stats as scipy_stats
 
@@ -320,7 +319,7 @@ def lag_composite(
     nlag: int = 10,
     phase_threshold: float = -np.pi / 2,
     tolerance: float = 0.001,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Create lag composites relative to a reference longitude and phase threshold."""
     nt, nlon = data.shape
     lon_index = np.argwhere(lon == lon_ref).squeeze()
@@ -388,7 +387,7 @@ def composite_kw_phase(
 
     lat = kelvin.lat.values
     kelvin_ref = meridional_projection(kelvin, lat)
-    pr_ori_eq = meridional_projection(pr_ori, lat)
+    meridional_projection(pr_ori, lat)
     pr_anomaly = remove_clm(pr_ori)
     pr_anomaly_eq = meridional_projection(pr_anomaly, lat)
 
@@ -419,10 +418,7 @@ def composite_kw_phase(
     output_file = os.path.join(output_dir, f"{model_name}_kw_composite_lag_lon_prano_prkw_history_{lon_ref}.nc")
     save_composite_to_netcdf(output_file, pr_ano_comp, pr_kw_comp, lon, nlag)
 
-    if model_name != "GPCP":
-        pr_kw_plot = pr_kw_comp * 86400
-    else:
-        pr_kw_plot = pr_kw_comp
+    pr_kw_plot = pr_kw_comp * 86400 if model_name != "GPCP" else pr_kw_comp
 
     strong_points = np.where(pr_kw_plot >= 1.5, pr_kw_plot, np.nan)
     strong_index = np.argwhere(~np.isnan(strong_points))
@@ -450,16 +446,16 @@ def composite_kw_phase(
 
 __all__ = [
     "butter_lowpass_filter",
-    "remove_10d_from_daily_data",
-    "remove_clm",
+    "calculate_kelvin_phase",
+    "composite_kw_phase",
     "find_local_extrema",
     "find_peak_influence_range",
-    "process_single_longitude",
-    "optimize_peak_detection",
-    "meridional_projection",
-    "calculate_kelvin_phase",
-    "phase_composite",
     "lag_composite",
+    "meridional_projection",
+    "optimize_peak_detection",
+    "phase_composite",
+    "process_single_longitude",
+    "remove_10d_from_daily_data",
+    "remove_clm",
     "save_composite_to_netcdf",
-    "composite_kw_phase",
 ]

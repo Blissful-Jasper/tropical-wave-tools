@@ -7,17 +7,34 @@ theme:
   name: material
   language: zh
   palette:
-    - scheme: default
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
       primary: teal
       accent: light blue
+      toggle:
+        icon: material/weather-night
+        name: 切换到深色模式
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: light blue
+      toggle:
+        icon: material/weather-sunny
+        name: 切换到浅色模式
   font:
     text: IBM Plex Sans
     code: IBM Plex Mono
   features:
     - navigation.top
     - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.instant
+    - navigation.footer
+    - toc.follow
     - content.code.copy
     - search.highlight
+    - search.suggest
 
 extra_css:
   - stylesheets/extra.css
@@ -45,6 +62,7 @@ nav:
   - 方法与笔记:
       - 方法总览: theory/index.md
       - WK 与波动诊断流程: theory/wk-diagnostics.md
+      - 方法验证: validation.md
       - Notes 总览: notes/index.md
       - M01 数据标准化与异常场: notes/method-01-data-standardization.md
       - M02 WK 频率-波数谱: notes/method-02-wk-spectrum.md

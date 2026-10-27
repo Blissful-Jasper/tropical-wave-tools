@@ -1,5 +1,5 @@
 Packaged sample data live in this directory.
 
-The lightweight OLR subset generated from the provided
-`/work/mh1498/m301257/code_project2/olr.day.mean.nc`
-will be written here as `olr_equatorial_1979.nc`.
+`olr_equatorial_1979.nc` is a lightweight OLR subset (1979, 15S-15N) cut from the
+NOAA Interpolated OLR daily mean product (`olr.day.mean.nc`). Regenerate it with
+`tropical-wave-tools prepare-sample-data --source /path/to/olr.day.mean.nc`.
