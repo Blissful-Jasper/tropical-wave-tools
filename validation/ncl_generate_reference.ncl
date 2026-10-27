@@ -41,7 +41,10 @@ begin
 
   do s = 0, dimsizes(inputs) - 1
     f = addfile("validation/" + inputs(s) + "_input.nc", "r")
-    x = tofloat(f->x)                          ; (time, lat, lon); inputs are float64, kf_filter wants float
+    xin = f->x                                 ; (time, lat, lon), stored as float64
+    x = tofloat(xin)                           ; tofloat drops dimension names and coordinates
+    copy_VarCoords(xin, x)
+    delete(xin)
     nlat = dimsizes(x&lat)
 
     do w = 0, dimsizes(waves) - 1
