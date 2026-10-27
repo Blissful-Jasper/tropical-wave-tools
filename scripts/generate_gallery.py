@@ -28,7 +28,7 @@ from tropical_wave_tools.plotting import (
     plot_wk_spectrum,
     use_scientific_style,
 )
-from tropical_wave_tools.preprocess import compute_anomaly
+from tropical_wave_tools.preprocessing import compute_anomaly
 from tropical_wave_tools.sample_data import open_example_olr
 from tropical_wave_tools.spectral import analyze_wk_spectrum
 from tropical_wave_tools.stats import standard_deviation

@@ -20,7 +20,7 @@
 ```python
 from tropical_wave_tools.atlas import WAVE_HOVMOLLER_WINDOWS, select_hovmoller_window, wave_longitude_projection
 from tropical_wave_tools.filters import filter_wave_signal
-from tropical_wave_tools.preprocess import compute_anomaly
+from tropical_wave_tools.preprocessing import compute_anomaly
 from tropical_wave_tools.plotting import plot_hovmoller_triptych
 
 raw_olr_anomaly = compute_anomaly(olr, group="month")

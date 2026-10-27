@@ -15,7 +15,7 @@ open_example_olr
 
 ```python
 from tropical_wave_tools import open_example_olr
-from tropical_wave_tools.preprocess import compute_anomaly
+from tropical_wave_tools.preprocessing import compute_anomaly
 from tropical_wave_tools.stats import standard_deviation
 from tropical_wave_tools.plotting import plot_latlon_field
 

@@ -8,7 +8,7 @@
 
 ```python
 from tropical_wave_tools.io import load_dataarray
-from tropical_wave_tools.preprocess import compute_anomaly
+from tropical_wave_tools.preprocessing import compute_anomaly
 from tropical_wave_tools.stats import standard_deviation
 from tropical_wave_tools.plotting import plot_latlon_field
 
@@ -44,7 +44,7 @@ plot_latlon_field(
 ## Source Files
 
 - [`src/tropical_wave_tools/io.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/io.py)
-- [`src/tropical_wave_tools/preprocess.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/preprocess.py)
+- [`src/tropical_wave_tools/preprocessing.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/preprocessing.py)
 - [`src/tropical_wave_tools/stats.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/stats.py)
 - [`src/tropical_wave_tools/plotting.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/plotting.py)
 - [`scripts/generate_gallery.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/scripts/generate_gallery.py)

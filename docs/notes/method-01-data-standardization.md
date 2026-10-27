@@ -3,7 +3,7 @@
 ## 对应代码
 
 - `src/tropical_wave_tools/io.py`
-- `src/tropical_wave_tools/preprocess.py`
+- `src/tropical_wave_tools/preprocessing.py`
 - `src/tropical_wave_tools/preprocessing.py`
 
 ## 解决的问题

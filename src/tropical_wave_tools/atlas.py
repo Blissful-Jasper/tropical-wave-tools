@@ -41,7 +41,7 @@ from tropical_wave_tools.plotting import (
     plot_wind_diagnostics_panel,
     plot_wk_spectrum,
 )
-from tropical_wave_tools.preprocess import compute_anomaly
+from tropical_wave_tools.preprocessing import compute_anomaly
 from tropical_wave_tools.spectral import analyze_wk_spectrum
 from tropical_wave_tools.stats import linear_regression, linear_trend, one_sample_ttest
 

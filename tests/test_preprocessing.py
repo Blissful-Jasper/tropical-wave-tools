@@ -4,10 +4,12 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from tropical_wave_tools.preprocess import compute_anomaly, compute_climatology, seasonal_mean
 from tropical_wave_tools.preprocessing import (
     build_wk_decomposition_layout,
+    compute_anomaly,
+    compute_climatology,
     decompose_symmetric_antisymmetric,
+    seasonal_mean,
     smooth_121,
 )
 
@@ -98,3 +100,18 @@ def test_compute_climatology_and_anomaly(synthetic_wave_data: xr.DataArray) -> N
 def test_seasonal_mean_returns_grouped_data(synthetic_wave_data: xr.DataArray) -> None:
     seasonal = seasonal_mean(synthetic_wave_data)
     assert "season" in seasonal.dims
+
+
+def test_preprocess_is_a_deprecated_alias_of_preprocessing() -> None:
+    import importlib
+    import sys
+
+    import pytest
+
+    import tropical_wave_tools.preprocessing as merged
+
+    sys.modules.pop("tropical_wave_tools.preprocess", None)
+    with pytest.warns(DeprecationWarning, match="preprocessing"):
+        legacy = importlib.import_module("tropical_wave_tools.preprocess")
+    for name in ("compute_anomaly", "compute_climatology", "select_region", "smooth_121"):
+        assert getattr(legacy, name) is getattr(merged, name)
