@@ -3,6 +3,21 @@
 ## Unreleased
 
 ### Fixed
+- `pearson_correlation` / `linear_regression` computed means and standard deviations over
+  different samples when the inputs had different missing values, so the correlation could leave
+  [-1, 1] (1.014 in a test) and slopes were biased. Both now use pairwise-complete samples. This
+  also feeds the Atlas Case 10 lagged regressions.
+- `EOFAnalyzer` (horizontal EOF): a single masked grid point (e.g. a land mask) removed *every*
+  time step and silently returned zero modes. Missing grid points are now dropped instead.
+- `EOFAnalyzer` (vertical EOF): `degrees_of_freedom` took the lag-1 autocorrelation along the stacked
+  (time, lat, lon) axis, i.e. between neighbouring longitudes (86 387 "independent" samples for
+  600 days). It is now the temporal effective sample size (39 where the true value is ~38), which
+  feeds `eigenvalue_errors`.
+- `relative_vorticity` / `horizontal_divergence` omitted the spherical metric terms
+  (`+u tan(phi)/a`, `-v tan(phi)/a`): vorticity of solid-body rotation was half its true value at
+  25N. They are now included and the periodic longitude seam is handled with a wrapped column.
+- With MetPy installed, CF wind units such as `m s-1` crashed the diagnostics (the unit string was
+  parsed as 1/millisecond). CF spellings are now accepted; unreadable units raise a clear error.
 - `WaveFilter._kf_filter` returned a scrambled field when the longitude axis
   contained a cyclic point (`lon[0] == lon[-1] mod 360`): the zonal FFT was
   inverted on the wrong length. The cyclic column is now restored explicitly.
@@ -32,6 +47,11 @@
   matrix with coverage, and a documentation build on every pull request.
 
 ### Added
+- `linear_trend(..., adjust_for_autocorrelation=True)`: effective-sample-size correction for the
+  slope uncertainty. Without it, AR(1) noise with rho=0.9 gives ~70% false positives at the nominal
+  5% level (5% -> 8% with the option).
+- `tests/test_reference_checks.py`: statistics, EOF, Matsuno branches and cross-spectrum phase
+  checked against scipy, an eigen-decomposition, the dispersion cubic and plane waves of known phase.
 - Analytic plane-wave tests for the filter and WK-spectrum sign convention.
 - `validation/` tooling to cross-check `kf_filter` against NCL output.
 - Redesigned Streamlit app and dark-mode aware documentation theme.

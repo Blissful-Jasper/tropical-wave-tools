@@ -34,23 +34,54 @@ def _time_axis_in_days(data: xr.DataArray, dim: str) -> xr.DataArray:
     return coordinate.astype("float64")
 
 
-def _linregress_1d(x: np.ndarray, y: np.ndarray) -> tuple[float, float, float, float, float]:
+def _linregress_1d(
+    x: np.ndarray,
+    y: np.ndarray,
+    adjust_for_autocorrelation: bool = False,
+) -> tuple[float, float, float, float, float]:
     valid = np.isfinite(x) & np.isfinite(y)
     if valid.sum() < 2:
         return (np.nan, np.nan, np.nan, np.nan, np.nan)
 
-    result = scipy_stats.linregress(x[valid], y[valid])
+    xv, yv = x[valid], y[valid]
+    result = scipy_stats.linregress(xv, yv)
+    pvalue, stderr = float(result.pvalue), float(result.stderr)
+
+    if adjust_for_autocorrelation and xv.size > 3:
+        # Effective sample size n * (1 - r1) / (1 + r1) from the lag-1 autocorrelation of the
+        # residuals (Santer et al. 2000); it can only widen the uncertainty.
+        residual = yv - (result.intercept + result.slope * xv)
+        centred = residual - residual.mean()
+        denominator = float(np.sum(centred**2))
+        r1 = float(np.sum(centred[1:] * centred[:-1]) / denominator) if denominator > 0 else 0.0
+        if r1 > 0.0:
+            n_eff = max(xv.size * (1.0 - r1) / (1.0 + r1), 3.0)
+            stderr *= float(np.sqrt((xv.size - 2.0) / (n_eff - 2.0)))
+            t_stat = result.slope / stderr
+            pvalue = float(2.0 * scipy_stats.t.sf(abs(t_stat), df=n_eff - 2.0))
+
     return (
         float(result.slope),
         float(result.intercept),
         float(result.rvalue),
-        float(result.pvalue),
-        float(result.stderr),
+        pvalue,
+        stderr,
     )
 
 
-def linear_trend(data: xr.DataArray, *, dim: str = "time") -> xr.Dataset:
-    """Estimate a linear trend using least squares."""
+def linear_trend(
+    data: xr.DataArray,
+    *,
+    dim: str = "time",
+    adjust_for_autocorrelation: bool = False,
+) -> xr.Dataset:
+    """Estimate a linear trend using least squares.
+
+    By default ``pvalue`` and ``stderr`` assume independent samples, which badly overstates
+    significance for autocorrelated series (daily data, AR(1) with rho=0.9: ~60% false
+    positives at the nominal 5% level). Set ``adjust_for_autocorrelation=True`` to use an
+    effective sample size from the lag-1 autocorrelation of the residuals.
+    """
     array = _prepare_array(data, dim=dim)
     coordinate = array[dim]
     axis = _time_axis_in_days(array, dim)
@@ -58,6 +89,7 @@ def linear_trend(data: xr.DataArray, *, dim: str = "time") -> xr.Dataset:
         _linregress_1d,
         axis,
         array,
+        kwargs={"adjust_for_autocorrelation": bool(adjust_for_autocorrelation)},
         input_core_dims=[[dim], [dim]],
         output_core_dims=[[], [], [], [], []],
         vectorize=True,
@@ -121,18 +153,34 @@ def one_sample_ttest(
     )
 
 
+def _align_valid_pairs(
+    left: xr.DataArray,
+    right: xr.DataArray,
+    *,
+    dim: str,
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """Align two arrays and keep only the samples where *both* are finite.
+
+    Means, variances and covariances must be computed over the same samples, otherwise the
+    correlation can leave [-1, 1] when the two arrays have different missing values.
+    """
+    left_aligned, right_aligned = xr.align(
+        _prepare_array(left, dim=dim),
+        _prepare_array(right, dim=dim),
+        join="inner",
+    )
+    valid = left_aligned.notnull() & right_aligned.notnull()
+    return left_aligned.where(valid), right_aligned.where(valid)
+
+
 def pearson_correlation(
     left: xr.DataArray,
     right: xr.DataArray,
     *,
     dim: str = "time",
 ) -> xr.DataArray:
-    """Compute Pearson correlation between two aligned arrays."""
-    left_aligned, right_aligned = xr.align(
-        _prepare_array(left, dim=dim),
-        _prepare_array(right, dim=dim),
-        join="inner",
-    )
+    """Compute Pearson correlation between two aligned arrays (pairwise-complete samples)."""
+    left_aligned, right_aligned = _align_valid_pairs(left, right, dim=dim)
     left_anom = left_aligned - left_aligned.mean(dim=dim)
     right_anom = right_aligned - right_aligned.mean(dim=dim)
     covariance = (left_anom * right_anom).mean(dim=dim)
@@ -147,7 +195,7 @@ def linear_regression(
     dim: str = "time",
 ) -> xr.Dataset:
     """Regress one field onto another and return slope/intercept/correlation."""
-    x, y = xr.align(_prepare_array(predictor, dim=dim), _prepare_array(predictand, dim=dim), join="inner")
+    x, y = _align_valid_pairs(predictor, predictand, dim=dim)
     x_anom = x - x.mean(dim=dim)
     y_anom = y - y.mean(dim=dim)
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import warnings
 
 import numpy as np
@@ -111,6 +112,21 @@ def _finite_difference_vorticity(zonal: xr.DataArray, meridional: xr.DataArray) 
     return (dv_dx - du_dy).rename("relative_vorticity")
 
 
+def _parse_wind_units(raw: object, registry: object) -> object:
+    """Parse a CF-style wind unit such as ``m s-1`` (not ``m/s`` only) with the pint registry."""
+    text = str(raw if raw is not None else "m/s").strip() or "m/s"
+    text = text.replace("**", "^")
+    text = re.sub(r"(?<=[A-Za-z])(-?\d+)\b", r"^\1", text)  # "s-1" -> "s^-1"
+    try:
+        parsed = registry(text)
+        parsed.to("m/s")
+    except Exception as exc:
+        raise ValueError(
+            f"Cannot interpret wind units {raw!r}; convert the winds to m/s first."
+        ) from exc
+    return parsed
+
+
 def _metpy_vector_calculus(
     zonal: xr.DataArray,
     meridional: xr.DataArray,
@@ -131,9 +147,9 @@ def _metpy_vector_calculus(
     if zonal.ndim == 3:
         dx = dx[np.newaxis, ...]
         dy = dy[np.newaxis, ...]
-    wind_units = units(str(zonal.attrs.get("units", "m/s")).replace(" ", ""))
-    zonal_values = np.asarray(zonal.values, dtype=float) * wind_units
-    meridional_values = np.asarray(meridional.values, dtype=float) * wind_units
+    wind_units = _parse_wind_units(zonal.attrs.get("units", "m/s"), units)
+    zonal_values = (np.asarray(zonal.values, dtype=float) * wind_units).to("m/s")
+    meridional_values = (np.asarray(meridional.values, dtype=float) * wind_units).to("m/s")
 
     if operation == "divergence":
         values = mp_divergence(zonal_values, meridional_values, dx=dx, dy=dy, x_dim=x_axis, y_dim=y_axis)
@@ -153,38 +169,85 @@ def _metpy_vector_calculus(
     )
 
 
-def horizontal_divergence(zonal_wind: xr.DataArray, meridional_wind: xr.DataArray) -> xr.DataArray:
-    """Compute horizontal wind divergence on a regular lat-lon grid."""
+def _is_periodic_longitude(lon: np.ndarray) -> bool:
+    """True if the grid wraps around the globe (``lon[-1] + dlon == lon[0] + 360``)."""
+    if lon.size < 3:
+        return False
+    dlon = float(np.mean(np.diff(lon)))
+    return bool(np.isclose(lon[-1] + dlon - lon[0], 360.0, atol=0.01 * abs(dlon)))
+
+
+def _pad_longitude(array: xr.DataArray) -> xr.DataArray:
+    """Add one wrapped column on each side so centred differences are valid at the seam."""
+    lon = array["lon"].values
+    dlon = float(np.mean(np.diff(lon)))
+    left = array.isel(lon=[-1]).assign_coords(lon=[lon[0] - dlon])
+    right = array.isel(lon=[0]).assign_coords(lon=[lon[-1] + dlon])
+    return xr.concat([left, array, right], dim="lon")
+
+
+def _tan_latitude(array: xr.DataArray) -> xr.DataArray:
+    lat = array["lat"]
+    tangent = np.tan(np.deg2rad(lat))
+    return tangent.where(np.abs(lat) < 89.9)
+
+
+def _wind_derivative(
+    zonal_wind: xr.DataArray,
+    meridional_wind: xr.DataArray,
+    *,
+    operation: str,
+) -> xr.DataArray:
+    """Divergence or relative vorticity on the sphere.
+
+    ``dx``/``dy`` differences alone give ``du/dx + dv/dy`` and ``dv/dx - du/dy``. On a sphere
+    these miss the metric terms ``-v tan(phi)/a`` and ``+u tan(phi)/a``; omitting them, for
+    example, halves the vorticity of solid-body rotation at 25N. They are added here, and the
+    longitude seam is padded when the grid is periodic.
+    """
     zonal = _ensure_lat_lon_layout(zonal_wind)
     meridional = _ensure_lat_lon_layout(meridional_wind)
     zonal, meridional = xr.align(zonal, meridional, join="exact")
+
+    periodic = _is_periodic_longitude(zonal["lon"].values)
+    if periodic:
+        zonal, meridional = _pad_longitude(zonal), _pad_longitude(meridional)
+
+    finite_difference = {
+        "divergence": _finite_difference_divergence,
+        "vorticity": _finite_difference_vorticity,
+    }[operation]
     try:
-        return _metpy_vector_calculus(zonal, meridional, operation="divergence")
+        result = _metpy_vector_calculus(zonal, meridional, operation=operation)
     except RuntimeError as exc:
         global _METPY_FALLBACK_WARNED
         if not _METPY_FALLBACK_WARNED:
-            warnings.warn(f"{exc} Falling back to centered finite differences.", RuntimeWarning, stacklevel=2)
+            warnings.warn(f"{exc} Falling back to centered finite differences.", RuntimeWarning, stacklevel=3)
             _METPY_FALLBACK_WARNED = True
-        return _finite_difference_divergence(zonal, meridional).assign_attrs(
+        result = finite_difference(zonal, meridional).assign_attrs(
             {"units": "s^-1", "method": "finite-difference-fallback"}
         )
+
+    tangent = _tan_latitude(zonal) / EARTH_RADIUS
+    if operation == "divergence":
+        corrected = result - meridional * tangent
+    else:
+        corrected = result + zonal * tangent
+    corrected = corrected.rename(result.name).assign_attrs(result.attrs)
+    corrected.attrs["curvature_terms"] = "included"
+    if periodic:
+        corrected = corrected.isel(lon=slice(1, -1))
+    return corrected
+
+
+def horizontal_divergence(zonal_wind: xr.DataArray, meridional_wind: xr.DataArray) -> xr.DataArray:
+    """Compute horizontal wind divergence (s^-1) on a regular lat-lon grid, winds in m/s."""
+    return _wind_derivative(zonal_wind, meridional_wind, operation="divergence")
 
 
 def relative_vorticity(zonal_wind: xr.DataArray, meridional_wind: xr.DataArray) -> xr.DataArray:
-    """Compute relative vorticity on a regular lat-lon grid."""
-    zonal = _ensure_lat_lon_layout(zonal_wind)
-    meridional = _ensure_lat_lon_layout(meridional_wind)
-    zonal, meridional = xr.align(zonal, meridional, join="exact")
-    try:
-        return _metpy_vector_calculus(zonal, meridional, operation="vorticity")
-    except RuntimeError as exc:
-        global _METPY_FALLBACK_WARNED
-        if not _METPY_FALLBACK_WARNED:
-            warnings.warn(f"{exc} Falling back to centered finite differences.", RuntimeWarning, stacklevel=2)
-            _METPY_FALLBACK_WARNED = True
-        return _finite_difference_vorticity(zonal, meridional).assign_attrs(
-            {"units": "s^-1", "method": "finite-difference-fallback"}
-        )
+    """Compute relative vorticity (s^-1) on a regular lat-lon grid, winds in m/s."""
+    return _wind_derivative(zonal_wind, meridional_wind, operation="vorticity")
 
 
 def calc_dse(temperature: xr.DataArray, geopotential_height: xr.DataArray) -> xr.DataArray:

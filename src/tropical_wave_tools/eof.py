@@ -84,17 +84,49 @@ class EOFAnalyzer:
             "ensemble": find_dim(["member", "ensemble", "ens"]),
         }
 
-    def _compute_eof_svd(self, matrix: np.ndarray) -> dict[str, np.ndarray]:
-        """Compute EOFs from a feature x sample matrix."""
-        valid_mask = ~np.any(np.isnan(matrix), axis=0)
-        matrix_valid = matrix[:, valid_mask]
+    def _compute_eof_svd(
+        self,
+        matrix: np.ndarray,
+        *,
+        nan_axis: str = "sample",
+        temporal_shape: tuple[int, int] | None = None,
+    ) -> dict[str, np.ndarray]:
+        """Compute EOFs from a ``feature x sample`` matrix.
+
+        ``nan_axis`` says what a missing value invalidates:
+
+        * ``"sample"`` (vertical EOF; samples are time x lat x lon points): drop the samples
+          that contain any missing value.
+        * ``"feature"`` (horizontal EOF; features are grid points, samples are times): drop
+          all-missing samples, then the grid points that still contain a missing value, for
+          example a land mask. Dropping *samples* here would discard every time step as soon
+          as one grid point is masked.
+
+        ``temporal_shape=(n_time, n_space)`` tells the degrees-of-freedom estimate that the
+        samples are ordered time-major, so the lag-1 autocorrelation is taken in time.
+        """
+        if nan_axis == "feature":
+            valid_mask = ~np.all(np.isnan(matrix), axis=0)
+            feature_valid = ~np.any(np.isnan(matrix[:, valid_mask]), axis=1)
+            matrix_valid = matrix[np.ix_(feature_valid, valid_mask)]
+        elif nan_axis == "sample":
+            valid_mask = ~np.any(np.isnan(matrix), axis=0)
+            feature_valid = np.ones(matrix.shape[0], dtype=bool)
+            matrix_valid = matrix[:, valid_mask]
+        else:
+            raise ValueError("`nan_axis` must be 'sample' or 'feature'.")
+        if matrix_valid.size == 0:
+            raise ValueError("No valid data remain after removing missing values.")
+
         left, singular_values, _ = np.linalg.svd(matrix_valid, full_matrices=False)
-        eof_patterns = left.T
-        pc_series = np.dot(eof_patterns, matrix_valid)
+        patterns_valid = left.T
+        pc_series = np.dot(patterns_valid, matrix_valid)
+        eof_patterns = np.full((patterns_valid.shape[0], matrix.shape[0]), np.nan)
+        eof_patterns[:, feature_valid] = patterns_valid
         nt = matrix_valid.shape[1]
         eigenvalues = singular_values**2 / nt
         explained_variance = eigenvalues / np.sum(eigenvalues) * 100.0
-        phi_L, phi_0, dof = self._estimate_dof(matrix_valid, L=1)
+        phi_L, phi_0, dof = self._estimate_dof(matrix, L=1, temporal_shape=temporal_shape)
         eigenvalue_errors = explained_variance * np.sqrt(2.0 / dof)
         return {
             "eof_patterns": eof_patterns,
@@ -104,6 +136,7 @@ class EOFAnalyzer:
             "eigenvalue_errors": eigenvalue_errors,
             "degrees_of_freedom": dof,
             "valid_mask": valid_mask,
+            "valid_feature_mask": feature_valid,
             "phi_0": phi_0,
             "phi_L": phi_L,
         }
@@ -151,16 +184,35 @@ class EOFAnalyzer:
             "phi_L": None,
         }
 
-    def _estimate_dof(self, matrix: np.ndarray, L: int = 1) -> tuple[float, float, float]:
-        """Estimate degrees of freedom for the North test."""
-        nt = matrix.shape[1]
-        covariance = 0.0
-        for index in range(L, nt - L):
-            covariance += np.sum(matrix[:, index] * matrix[:, index + L])
-        phi_L = covariance / (nt - 2 * L)
-        phi_0 = np.sum(matrix**2) / nt
+    def _estimate_dof(
+        self,
+        matrix: np.ndarray,
+        L: int = 1,
+        *,
+        temporal_shape: tuple[int, int] | None = None,
+    ) -> tuple[float, float, float]:
+        """Effective number of independent time samples for the North et al. (1982) test.
+
+        ``matrix`` is ``feature x sample``. Without ``temporal_shape`` the samples are
+        consecutive times. With ``temporal_shape=(n_time, n_space)`` they are ordered
+        time-major (time, then space) and the lag is taken along time at each point; a lag along
+        the stacked axis would compare neighbouring grid points instead and overstate the
+        degrees of freedom by orders of magnitude. Spatial dependence is not modelled, so the
+        result is the temporal effective sample size.
+        """
+        if temporal_shape is None:
+            cube = matrix[:, :, np.newaxis]
+        else:
+            n_time, n_space = temporal_shape
+            cube = matrix.reshape(matrix.shape[0], n_time, n_space)
+        n_time = cube.shape[1]
+        leading, lagged = cube[:, L:, :], cube[:, :-L, :]
+        both = np.isfinite(leading) & np.isfinite(lagged)
+        phi_L = float(np.sum(leading[both] * lagged[both]) / max(both.sum(), 1))
+        finite = np.isfinite(cube)
+        phi_0 = float(np.sum(cube[finite] ** 2) / max(finite.sum(), 1))
         r_L = phi_L / phi_0
-        dof = (1 - r_L**2) / (1 + r_L**2) * nt
+        dof = (1 - r_L**2) / (1 + r_L**2) * n_time
         return phi_L, phi_0, dof
 
     def fit(
@@ -233,7 +285,11 @@ class EOFAnalyzer:
             if level_dim is not None:
                 stacked = anomalies.stack(sample=(time_dim, lat_dim, lon_dim))
                 matrix = stacked.transpose(level_dim, "sample").values
-                eof_results = self._compute_eof_svd(matrix)
+                eof_results = self._compute_eof_svd(
+                    matrix,
+                    nan_axis="sample",
+                    temporal_shape=(anomalies[time_dim].size, anomalies[lat_dim].size * anomalies[lon_dim].size),
+                )
                 n_use = min(n_modes, eof_results["eof_patterns"].shape[0])
                 eofs = xr.DataArray(
                     eof_results["eof_patterns"][:n_use, :],
@@ -253,7 +309,7 @@ class EOFAnalyzer:
             else:
                 stacked = anomalies.stack(feature=(lat_dim, lon_dim)).transpose("feature", time_dim)
                 matrix = stacked.values
-                eof_results = self._compute_eof_svd(matrix)
+                eof_results = self._compute_eof_svd(matrix, nan_axis="feature")
                 n_use = min(n_modes, eof_results["eof_patterns"].shape[0])
                 eof_flat = xr.DataArray(
                     eof_results["eof_patterns"][:n_use, :],
