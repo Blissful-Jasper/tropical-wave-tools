@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 
@@ -9,6 +10,8 @@ import numpy as np
 import xarray as xr
 from joblib import Parallel, delayed
 from scipy.signal import butter, filtfilt
+
+LOGGER = logging.getLogger(__name__)
 
 
 def butter_lowpass_filter(data: np.ndarray, cutoff_freq: float, fs: float, order: int = 4) -> np.ndarray:
@@ -41,7 +44,11 @@ def remove_10d_from_daily_data(
 
 
 def remove_clm(data: xr.DataArray, *, fs: float = 1.0, cutoff: float = 1 / 10, order: int = 4) -> xr.DataArray:
-    """Remove the mean climatology and return the anomaly field."""
+    """Remove the time mean and return the anomaly field.
+
+    ``fs``, ``cutoff`` and ``order`` are accepted for backward compatibility but unused: no
+    low-pass filter is applied here (see ``remove_10d_from_daily_data`` for that).
+    """
     if not isinstance(data, xr.DataArray):
         raise TypeError("Input must be an xarray.DataArray.")
     if "time" not in data.dims:
@@ -54,12 +61,17 @@ def remove_clm(data: xr.DataArray, *, fs: float = 1.0, cutoff: float = 1 / 10, o
         dims=data.dims,
         coords=data.coords,
         attrs=data.attrs,
-        name="lowpass_filtered_anomaly",
+        name="anomaly",
     )
 
 
 def find_local_extrema(values: np.ndarray) -> np.ndarray:
-    """Find local minima and maxima in ``(time, lon)`` data."""
+    """Find local minima (``+1``) and maxima (``-1``) in ``(time, lon)`` data.
+
+    A flat run of equal values counts as one extremum (its first sample), so a plateau no
+    longer produces several adjacent "peaks" that cut each other's influence range, and a
+    constant series has none.
+    """
     nt, nlon = values.shape
     output = np.full((nt, nlon), np.nan, dtype=np.float32)
 
@@ -67,8 +79,8 @@ def find_local_extrema(values: np.ndarray) -> np.ndarray:
     current_values = values[1:-1, :]
     next_values = values[2:, :]
 
-    local_min = (current_values <= previous_values) & (current_values <= next_values)
-    local_max = (current_values >= previous_values) & (current_values >= next_values)
+    local_min = (current_values < previous_values) & (current_values <= next_values)
+    local_max = (current_values > previous_values) & (current_values >= next_values)
 
     output[1:-1, :] = np.where(local_min, 1, output[1:-1, :])
     output[1:-1, :] = np.where(local_max, -1, output[1:-1, :])
@@ -119,7 +131,7 @@ def process_single_longitude(
 ) -> np.ndarray:
     """Assign the influence range of significant peaks for one longitude."""
     nt = values.shape[0]
-    peak_output = np.full(nt, np.nan, dtype=np.float32)
+    peak_output = np.full(nt, np.nan, dtype=np.float64)  # float32 would cost ~1e-4 rad near crests
     zero_idx = np.where(values[:-1, lon_index] * values[1:, lon_index] <= 0)[0]
     peak_idx = np.where(np.abs(local_min_max_id[:, lon_index]) == 1)[0]
 
@@ -156,7 +168,7 @@ def optimize_peak_detection(
     nt, nlon = values.shape
     start_time = time.time()
     local_min_max_id = find_local_extrema(values)
-    print(f"[sqrt] Local-extrema detection time: {time.time() - start_time:.2f}s")
+    LOGGER.debug("Local-extrema detection time: %.2fs", time.time() - start_time)
 
     extrema = xr.DataArray(
         data=local_min_max_id,
@@ -173,7 +185,7 @@ def optimize_peak_detection(
         )
         peak_values = np.column_stack(peak_columns)
     else:
-        peak_values = np.full((nt, nlon), np.nan, dtype=np.float32)
+        peak_values = np.full((nt, nlon), np.nan, dtype=np.float64)
         for lon_index in range(nlon):
             peak_values[:, lon_index] = process_single_longitude(
                 lon_index,
@@ -182,7 +194,7 @@ def optimize_peak_detection(
                 value_std,
                 Nstd,
             )
-    print(f"[sqrt] Peak-influence assignment time: {time.time() - assign_start:.2f}s")
+    LOGGER.debug("Peak-influence assignment time: %.2fs", time.time() - assign_start)
 
     peak_da = xr.DataArray(
         data=peak_values,
@@ -286,27 +298,32 @@ def phase_composite(
     n_bins: int | None = None,
     phase_range: tuple[float, float] = (-np.pi, np.pi),
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Composite data by phase bins."""
+    """Composite data by phase bins.
+
+    The ``n_bins`` bins have equal width ``(hi - lo) / n_bins`` and the returned centres are
+    ``lo + (i + 0.5) * width``. For a full ``2*pi`` range the phase is periodic, so ``+pi`` and
+    ``-pi`` are the same phase and fall in the same bin; values outside a partial range are
+    ignored. (Earlier versions spanned ``2*pi + width`` with ``n_bins`` bins, which made the bins
+    wider than ``2*pi / n_bins`` and split the ``+-pi`` phase over two half-populated end bins.)
+    The default ``n_bins`` is 19.
+    """
     from scipy import stats as scipy_stats
 
+    low, high = phase_range
     if n_bins is None:
-        delta_phase = 1 / np.pi
-        n_bins = int((phase_range[1] - phase_range[0]) / delta_phase)
-    else:
-        delta_phase = (phase_range[1] - phase_range[0]) / n_bins
-
-    bins = np.linspace(
-        phase_range[0] - delta_phase / 2,
-        phase_range[1] + delta_phase / 2,
-        n_bins + 1,
-    )
+        n_bins = int((high - low) / (1 / np.pi))
+    bins = np.linspace(low, high, n_bins + 1)
     phase_bin = 0.5 * (bins[:-1] + bins[1:])
-    phase_flat = phase.values.flatten()
-    data_flat = data.values.flatten()
-    mask = ~np.isnan(phase_flat) & ~np.isnan(data_flat)
 
-    counts = scipy_stats.binned_statistic(phase_flat[mask], data_flat[mask], statistic="count", bins=bins).statistic
-    means = scipy_stats.binned_statistic(phase_flat[mask], data_flat[mask], statistic="mean", bins=bins).statistic
+    phase_flat = phase.values.flatten().astype(float)
+    data_flat = data.values.flatten().astype(float)
+    mask = ~np.isnan(phase_flat) & ~np.isnan(data_flat)
+    phase_flat, data_flat = phase_flat[mask], data_flat[mask]
+    if np.isclose(high - low, 2.0 * np.pi):
+        phase_flat = low + np.mod(phase_flat - low, high - low)  # fold +pi onto -pi
+
+    counts = scipy_stats.binned_statistic(phase_flat, data_flat, statistic="count", bins=bins).statistic
+    means = scipy_stats.binned_statistic(phase_flat, data_flat, statistic="mean", bins=bins).statistic
     return phase_bin, means, counts
 
 
@@ -320,13 +337,22 @@ def lag_composite(
     phase_threshold: float = -np.pi / 2,
     tolerance: float = 0.001,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Create lag composites relative to a reference longitude and phase threshold."""
+    """Create lag composites relative to a reference longitude and phase threshold.
+
+    ``lon_ref`` is snapped to the nearest grid longitude (an error is raised if it is farther
+    than one grid step away). The reference times are those where the phase at that longitude
+    is within ``tolerance`` of ``phase_threshold``; with the default ``-pi/2`` these are the
+    crests of the filtered series. Times closer than ``nlag`` samples to either end are skipped.
+    """
     nt, nlon = data.shape
-    lon_index = np.argwhere(lon == lon_ref).squeeze()
+    lon_values = np.asarray(lon, dtype=float)
+    lon_index = int(np.argmin(np.abs(lon_values - lon_ref)))
+    grid_step = float(np.median(np.abs(np.diff(lon_values)))) if lon_values.size > 1 else 0.0
+    if abs(lon_values[lon_index] - lon_ref) > max(grid_step, 1.0e-6):
+        raise ValueError(f"`lon_ref`={lon_ref} is outside the longitude grid ({lon_values.min()}..{lon_values.max()}).")
     phase_ref = phase.data[:, lon_index]
-    it_max = np.argwhere(np.abs(phase_ref - phase_threshold) < tolerance).squeeze()
-    it_max = np.where(((it_max <= nlag) | (it_max >= nt - nlag)), np.nan, it_max)
-    it_max = np.delete(it_max, np.isnan(it_max) == 1).astype("int")
+    candidates = np.atleast_1d(np.argwhere(np.abs(phase_ref - phase_threshold) < tolerance).squeeze())
+    it_max = candidates[(candidates > nlag) & (candidates < nt - nlag)].astype(int)
 
     composite = np.full([2 * nlag + 1, nlon], np.nan)
     if it_max.size == 0:
@@ -381,8 +407,18 @@ def composite_kw_phase(
     nlag: int = 10,
     Nstd: float = 1.0,
     debug_plot: bool = False,
+    to_mm_per_day: float | None = None,
+    strong_threshold: float = 1.5,
 ) -> None:
-    """Run a Kelvin-wave phase-composite workflow and save its products."""
+    """Run a Kelvin-wave phase-composite workflow and save its products.
+
+    ``to_mm_per_day`` converts the filtered field to mm/day for the phase-speed fit; the default
+    (``None``) keeps the historical behaviour of 86400 (kg m-2 s-1 input) except for
+    ``model_name == "GPCP"``, which is assumed to be in mm/day already. Points of the lag-longitude
+    composite above ``strong_threshold`` (mm/day) are fitted with one straight line to estimate the
+    phase speed ``Cp_ave``. That estimate assumes a single propagating ridge (a localised event
+    composite); a field with several simultaneous crests gives a meaningless slope.
+    """
     import os
 
     lat = kelvin.lat.values
@@ -418,9 +454,10 @@ def composite_kw_phase(
     output_file = os.path.join(output_dir, f"{model_name}_kw_composite_lag_lon_prano_prkw_history_{lon_ref}.nc")
     save_composite_to_netcdf(output_file, pr_ano_comp, pr_kw_comp, lon, nlag)
 
-    pr_kw_plot = pr_kw_comp * 86400 if model_name != "GPCP" else pr_kw_comp
+    factor = to_mm_per_day if to_mm_per_day is not None else (1.0 if model_name == "GPCP" else 86400.0)
+    pr_kw_plot = pr_kw_comp * factor
 
-    strong_points = np.where(pr_kw_plot >= 1.5, pr_kw_plot, np.nan)
+    strong_points = np.where(pr_kw_plot >= strong_threshold, pr_kw_plot, np.nan)
     strong_index = np.argwhere(~np.isnan(strong_points))
     if strong_index.size == 0:
         return

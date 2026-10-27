@@ -3,6 +3,18 @@
 ## Unreleased
 
 ### Fixed
+- `phase.lag_composite` crashed when `lon_ref` was not exactly a grid longitude (float equality) or
+  when exactly one reference time qualified. `lon_ref` now snaps to the nearest grid longitude (error
+  if farther than one grid step) and any number of events is handled.
+- `phase.phase_composite` used `n_bins` bins over `2*pi + width`, so bins were wider than `2*pi/n_bins`
+  and the `+-pi` phase was split over two half-populated end bins. Bins are now equal-width and
+  wrap-aware (centres shift accordingly).
+- `phase.find_local_extrema` flagged every sample of a flat run as an extremum (a constant series was
+  all "peaks"); a plateau is now one extremum.
+- Peak amplitudes were stored as float32, limiting the phase at crests to ~1e-4 rad; now float64.
+- `phase.remove_clm` was named and labelled "lowpass_filtered_anomaly" but only removes the time mean
+  (its `fs`/`cutoff`/`order` arguments were unused); the output is now named `anomaly` and the
+  docstring says so.
 - `pearson_correlation` / `linear_regression` computed means and standard deviations over
   different samples when the inputs had different missing values, so the correlation could leave
   [-1, 1] (1.014 in a test) and slopes were biased. Both now use pairwise-complete samples. This
@@ -47,6 +59,11 @@
   matrix with coverage, and a documentation build on every pull request.
 
 ### Added
+- `composite_kw_phase(..., to_mm_per_day=None, strong_threshold=1.5)`: the unit factor (previously
+  hard-coded to 86400 except for model name "GPCP") and the phase-speed threshold are now arguments
+  with the historical defaults. `optimize_peak_detection` logs timings at DEBUG instead of printing.
+- Phase checks against scipy, known phase, analytic bin means and a wave packet of known speed
+  (`Cp_ave` recovers 10, 15 and 20 m/s within 0.5%).
 - `linear_trend(..., adjust_for_autocorrelation=True)`: effective-sample-size correction for the
   slope uncertainty. Without it, AR(1) noise with rho=0.9 gives ~70% false positives at the nominal
   5% level (5% -> 8% with the option).
