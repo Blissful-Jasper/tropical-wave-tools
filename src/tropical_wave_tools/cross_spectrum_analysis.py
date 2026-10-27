@@ -97,6 +97,17 @@ def load_multiple_experiments(
     return data_dict
 
 
+def _as_boolean_mask(mask: xr.DataArray) -> xr.DataArray:
+    """Turn a land/sea or validity mask into booleans: True = keep.
+
+    A float mask is usually ``1`` / ``NaN``; ``NaN.astype(bool)`` is ``True``, which silently kept
+    every point. NaN and zero now mean "masked out".
+    """
+    if mask.dtype == bool:
+        return mask
+    return mask.notnull() & (mask != 0)
+
+
 def preprocess_data_with_mask(
     data1: xr.DataArray,
     data2: xr.DataArray,
@@ -113,8 +124,9 @@ def preprocess_data_with_mask(
         data2 = data2.groupby("time.dayofyear") - data2.groupby("time.dayofyear").mean()
 
     if mask is not None:
-        mask1 = mask.astype(bool).broadcast_like(data1).fillna(False)
-        mask2 = mask.astype(bool).broadcast_like(data2).fillna(False)
+        boolean_mask = _as_boolean_mask(mask)
+        mask1 = boolean_mask.broadcast_like(data1)
+        mask2 = boolean_mask.broadcast_like(data2)
         data1 = data1.where(mask1)
         data2 = data2.where(mask2)
 
@@ -147,10 +159,15 @@ def compute_cross_spectrum_for_experiments(
     seg_overlap: int = -65,
     symmetry: str = "symm",
     samples_per_day: int = 1,
+    dof_per_segment: float = 2.667,
     memory_monitor: MemoryMonitor | None = None,
     verbose: bool = True,
 ) -> dict[str, dict[str, object]]:
-    """Compute cross-spectra for multiple experiments."""
+    """Compute cross-spectra for multiple experiments.
+
+    ``seg_overlap`` is NCL's gap between segments (negative = overlap); ``dof_per_segment`` sets the
+    degrees of freedom behind the coherence significance (see ``calculate_cross_spectrum``).
+    """
     results: dict[str, dict[str, object]] = {}
     for experiment in experiments:
         if experiment not in data1_dict or experiment not in data2_dict:
@@ -176,6 +193,7 @@ def compute_cross_spectrum_for_experiments(
             symmetry=symmetry,
             return_xarray=True,
             samples_per_day=samples_per_day,
+            dof_per_segment=dof_per_segment,
         )
         results[str(experiment)] = {
             "STC": result["STC"],
@@ -291,6 +309,7 @@ def analyze_cross_spectrum(
     seg_overlap: int = -65,
     symmetry: str = "symm",
     samples_per_day: int = 1,
+    dof_per_segment: float = 2.667,
     output_dir: str | Path | None = None,
     plot_params: dict[str, object] | None = None,
     verbose: bool = True,
@@ -328,6 +347,7 @@ def analyze_cross_spectrum(
         seg_overlap=seg_overlap,
         symmetry=symmetry,
         samples_per_day=samples_per_day,
+        dof_per_segment=dof_per_segment,
         memory_monitor=memory_monitor,
         verbose=verbose,
     )

@@ -13,6 +13,7 @@ from tropical_wave_tools.atlas.events import (
     _lat_range,
 )
 from tropical_wave_tools.eof import EOFAnalyzer
+from tropical_wave_tools.stats import linear_regression
 
 
 def _case07_component_field(data: xr.DataArray, *, projection: str) -> xr.DataArray:
@@ -41,13 +42,35 @@ def _case07_latitude_weights(data: xr.DataArray) -> xr.DataArray:
     return xr.DataArray(weights, dims=("lat",), coords={"lat": data["lat"]}, name="sqrt_coslat")
 
 
+def _normalize_eof_signs(eofs: xr.DataArray, pcs: xr.DataArray) -> tuple[xr.DataArray, xr.DataArray]:
+    """Flip each mode so that its largest-magnitude loading is positive (EOF and PC flip together).
+
+    The sign of an EOF/PC pair is arbitrary and depends on the SVD routine, so the same data could
+    give mirrored figures on different machines. The pair describes the same variability either way.
+    """
+    signs = []
+    for mode in eofs["mode"].values:
+        loading = np.asarray(eofs.sel(mode=mode).values, dtype=float).ravel()
+        index = int(np.nanargmax(np.abs(loading))) if np.isfinite(loading).any() else 0
+        signs.append(-1.0 if loading[index] < 0.0 else 1.0)
+    sign = xr.DataArray(signs, dims="mode", coords={"mode": eofs["mode"]})
+    return eofs * sign, pcs * sign.sel(mode=pcs["mode"])
+
+
 def compute_wave_eof(
     data: xr.DataArray,
     *,
     wave_name: str | None = None,
     n_modes: int = 2,
 ) -> tuple[xr.DataArray, xr.DataArray, np.ndarray, xr.DataArray]:
-    """Compute wave-aware EOFs and return the analyzed OLR field used for fitting."""
+    """Compute wave-aware EOFs and return the analyzed OLR field used for fitting.
+
+    The field is restricted to the wave's latitude band, projected onto its symmetric or
+    antisymmetric component (or kept whole), weighted by ``sqrt(cos(lat))`` for the decomposition,
+    and the patterns are divided by the weights again so they are in physical units.
+    ``explained_variance`` refers to the weighted, projected data. The sign of each mode is fixed so
+    that its largest-magnitude loading is positive.
+    """
     wave_key = wave_name.lower() if wave_name is not None else None
     lat_range = CASE07_WAVE_LAT_RANGES.get(wave_key)
     projection = CASE07_WAVE_PROJECTIONS.get(wave_key, "full")
@@ -69,6 +92,7 @@ def compute_wave_eof(
     if lat_weights is not None and {"mode", "lat", "lon"}.issubset(eofs.dims):
         eofs = eofs / lat_weights
     pcs = results["pc_scores"]
+    eofs, pcs = _normalize_eof_signs(eofs, pcs)
     explained = np.asarray(results["explained_variance"], dtype=float)
     analysis_field.attrs["case07_projection"] = projection
     if wave_key is not None:
@@ -84,7 +108,11 @@ def regress_field_onto_pcs(
     *,
     standardize_pc: bool = False,
 ) -> xr.DataArray:
-    """Regress one field onto each EOF principal component."""
+    """Regress one field onto each EOF principal component.
+
+    The slope is computed over the times where both the field (at each grid point) and the PC are
+    finite. With ``standardize_pc=True`` the units are field units per standard deviation of the PC.
+    """
     time_dim = next((dim for dim in pcs.dims if dim != "mode"), None)
     if time_dim is None:
         raise ValueError("`pcs` must contain one non-mode dimension.")
@@ -92,15 +120,11 @@ def regress_field_onto_pcs(
     patterns: list[xr.DataArray] = []
     for mode in pcs["mode"].values:
         pc = pcs.sel(mode=mode)
-        field_aligned, pc_aligned = xr.align(field, pc, join="inner")
-        pc_anom = pc_aligned - pc_aligned.mean(time_dim)
         if standardize_pc:
-            pc_std = float(pc_anom.std(time_dim).item())
+            pc_std = float(pc.std(time_dim).item())
             if np.isfinite(pc_std) and pc_std > 0.0:
-                pc_anom = pc_anom / pc_std
-        field_anom = field_aligned - field_aligned.mean("time")
-        denominator = (pc_anom**2).mean(time_dim)
-        slope = (field_anom * pc_anom).mean(time_dim) / denominator
+                pc = (pc - pc.mean(time_dim)) / pc_std
+        slope = linear_regression(pc, field, dim=time_dim)["slope"]
         patterns.append(slope.expand_dims(mode=[mode]))
 
     return xr.concat(patterns, dim="mode")

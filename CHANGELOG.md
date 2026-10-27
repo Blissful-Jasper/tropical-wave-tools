@@ -3,6 +3,15 @@
 ## Unreleased
 
 ### Fixed
+- `atlas.regress_field_onto_pcs` took the PC mean over all times but the field mean over the times the
+  field exists, so missing days biased the slope (0.5% with 23% missing days, more with clustered gaps).
+  It now uses the days valid in both (same fix as `stats.linear_regression`).
+- `cross_spectrum_analysis.preprocess_data_with_mask`: a float mask with NaN (`1` / `NaN`, the common
+  land-sea format) was ignored because `NaN.astype(bool)` is `True`. NaN and 0 now mean "masked out".
+- `calculate_cross_spectrum` silently paired latitudes by array position, so an asymmetric grid
+  (e.g. -5..15) was accepted and the "symmetric" component was meaningless. xarray input is now
+  transposed to (time, lat, lon), sorted to ascending latitude and must be symmetric about the equator.
+  The antisymmetric component is therefore always `0.5 * (south - north)` whatever the input order.
 - Monthly-RMS significance (`compute_monthly_climatology_and_significance` and its longitude-mean
   variant, now one shared implementation): the annual mean used for the anomalies included partial
   first/last years, shifting the t-test (p = 0.028 vs 0.016 for a record starting in July). Only
@@ -50,6 +59,9 @@
   core functionality.
 
 ### Changed
+- `compute_wave_eof` fixes the sign of every mode (largest-magnitude loading positive; EOF and PC flip
+  together). The sign was whatever the SVD routine returned, so figures could mirror between machines;
+  patterns and explained variance are unchanged, but individual published figures may flip once.
 - **Repository layout:** `plotting.py` is now the package `plotting/` (`_style`, `_geo`, `_wind`,
   `spectrum`, `hovmoller`, `maps`, `eof`, `climatology`) and `atlas.py` the package `atlas/` (`_config`,
   `_paths`, `monthly`, `events`, `case10`, `wave_eof`, `workflow`). The split was generated from the AST
@@ -91,6 +103,14 @@
   matrix with coverage, and a documentation build on every pull request.
 
 ### Added
+- `calculate_cross_spectrum(..., dof_per_segment=2.667)` (also in `compute_cross_spectrum_for_experiments`
+  and `analyze_cross_spectrum`): the degrees of freedom behind the coherence significance were a fixed
+  `2.667 * nseg`. With 96-day segments overlapping by 65 days and independent noise, the nominal 5%
+  false-alarm rate was 9% when all latitudes are perfectly coherent and 0.2% when they are independent,
+  so the constant is a convention to calibrate for your data; this is now documented.
+- Checks for the wave EOFs (known symmetric/antisymmetric modes, weighting, regression) and the
+  cross-spectrum workflow (masks, seasonal-cycle removal, latitude handling, coherence bounds and null
+  false-alarm rates, recovered phase and coherence).
 - `README.en.md` (English README) linked from the Chinese README.
 - Case 10 outputs (`shading`, `contours`) now carry `long_name`, `predictor`, `units` ("per standard
   deviation") and `lag_convention` attributes. The predictor is the *filtered OLR* at the base point
