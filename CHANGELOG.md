@@ -3,6 +3,15 @@
 ## Unreleased
 
 ### Fixed
+- Atlas latitude selections (`equatorial_mean`, `wave_longitude_projection`, Hovmoller and Case 05/10
+  bands, spectral band) used `sel(lat=slice(lo, hi))`, which is empty on a *descending* latitude axis
+  (the usual ERA5 layout): every equatorial mean became NaN, event detection silently returned zero
+  events, and antisymmetric waves fell back to an equatorial mean. A new `_lat_range` handles both
+  orders.
+- `detect_wave_events` / `detect_point_events`: `min_distance_days` was passed to `find_peaks` as a
+  number of *samples*, so for 6-hourly or hourly data events a few days apart were not merged. It is
+  now converted with the time step (daily data is unchanged). An all-NaN reference series now warns
+  instead of silently returning no events. The two functions share one implementation.
 - `phase.lag_composite` crashed when `lon_ref` was not exactly a grid longitude (float equality) or
   when exactly one reference time qualified. `lon_ref` now snaps to the nearest grid longitude (error
   if farther than one grid step) and any number of events is handled.
@@ -59,6 +68,11 @@
   matrix with coverage, and a documentation build on every pull request.
 
 ### Added
+- `lagged_composite` returns the number of events behind each lag as the `n_events` coordinate
+  (events whose shifted index leaves the record are dropped per lag, so the set shrinks at large lags).
+- Event-detection checks: known sinusoids, sub-daily sampling, descending latitude, NaN gaps, composite
+  means, Hovmoller window, activity mask, projection conventions, and an end-to-end wave-packet test
+  (detect events, composite, recover the 15 m/s propagation within 10%).
 - `composite_kw_phase(..., to_mm_per_day=None, strong_threshold=1.5)`: the unit factor (previously
   hard-coded to 86400 except for model name "GPCP") and the phase-speed threshold are now arguments
   with the historical defaults. `optimize_peak_detection` logs timings at DEBUG instead of printing.

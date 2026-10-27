@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Union
@@ -566,9 +567,21 @@ def summarize_variance_fraction_cycle(
     return monthly_mean, monthly_std
 
 
+def _lat_range(data: xr.DataArray, lower: float, upper: float) -> xr.DataArray:
+    """Select ``lower <= lat <= upper`` for ascending *or* descending latitude axes.
+
+    ``data.sel(lat=slice(lower, upper))`` silently returns an empty selection on a descending axis
+    (the usual ERA5 layout), which turned every equatorial average into NaN.
+    """
+    latitude = np.asarray(data["lat"].values)
+    if latitude.size > 1 and latitude[0] > latitude[-1]:
+        return data.sel(lat=slice(upper, lower))
+    return data.sel(lat=slice(lower, upper))
+
+
 def equatorial_mean(data: xr.DataArray, *, lat_band: tuple[float, float] = (-5.0, 5.0)) -> xr.DataArray:
     """Compute an equatorial-band mean."""
-    return data.sel(lat=slice(*lat_band)).mean("lat")
+    return _lat_range(data, *lat_band).mean("lat")
 
 
 def is_antisymmetric_wave(wave_name: str | None) -> bool:
@@ -594,8 +607,8 @@ def wave_longitude_projection(
         projection_name = "equatorial_mean"
     else:
         lower, upper = antisymmetric_lat_band
-        north = data.sel(lat=slice(0.0, upper))
-        south = data.sel(lat=slice(lower, 0.0))
+        north = _lat_range(data, 0.0, upper)
+        south = _lat_range(data, lower, 0.0)
         north = north.where(north["lat"] > 0.0, drop=True)
         south = south.where(south["lat"] < 0.0, drop=True)
         if north.sizes.get("lat", 0) == 0 or south.sizes.get("lat", 0) == 0:
@@ -639,6 +652,52 @@ def _case07_latitude_weights(data: xr.DataArray) -> xr.DataArray:
     return xr.DataArray(weights, dims=("lat",), coords={"lat": data["lat"]}, name="sqrt_coslat")
 
 
+def _minimum_distance_samples(reference: xr.DataArray, min_distance_days: float) -> int:
+    """Convert a minimum separation in days to samples using the time step of the series.
+
+    ``scipy.signal.find_peaks`` counts samples. Passing ``min_distance_days`` straight through
+    meant "7 samples", i.e. 7 hours for hourly data, so events a few days apart were not merged.
+    """
+    time = reference["time"]
+    if time.size > 1 and np.issubdtype(time.dtype, np.datetime64):
+        step_days = float(np.median(np.diff(time.values)) / np.timedelta64(1, "D"))
+        if step_days > 0.0:
+            return max(1, round(min_distance_days / step_days))
+    return max(1, int(min_distance_days))
+
+
+def _find_events(
+    reference: xr.DataArray,
+    *,
+    sign: str,
+    threshold_std: float,
+    min_distance_days: float,
+) -> np.ndarray:
+    """Indices of peaks of ``reference`` beyond ``threshold_std`` standard deviations."""
+    if sign not in {"negative", "positive", "absolute"}:
+        raise ValueError("`sign` must be one of {'negative', 'positive', 'absolute'}.")
+    values = np.asarray(reference.values, dtype=float)
+    if not np.isfinite(values).any():
+        warnings.warn(
+            "The reference series has no finite values (check the latitude/longitude selection); "
+            "no events were detected.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+        return np.array([], dtype=int)
+    sigma = float(np.nanstd(values))
+    if not np.isfinite(sigma) or sigma == 0.0:
+        return np.array([], dtype=int)
+
+    signal = {"negative": -values, "positive": values, "absolute": np.abs(values)}[sign]
+    peaks, _ = find_peaks(
+        signal,
+        height=threshold_std * sigma,
+        distance=_minimum_distance_samples(reference, min_distance_days),
+    )
+    return peaks.astype(int)
+
+
 def detect_wave_events(
     filtered_olr: xr.DataArray,
     *,
@@ -650,27 +709,23 @@ def detect_wave_events(
     threshold_std: float = 1.0,
     min_distance_days: int = 7,
 ) -> tuple[np.ndarray, xr.DataArray]:
-    """Detect strong wave events from equatorial filtered OLR at a reference longitude."""
+    """Detect strong wave events from equatorial filtered OLR at a reference longitude.
+
+    The reference is the meridional projection at the grid longitude nearest ``lon_ref``. Events
+    are peaks of ``-x`` (``sign="negative"``, convective OLR minima), ``x`` or ``|x|`` that exceed
+    ``threshold_std`` standard deviations of the whole series; of two peaks closer than
+    ``min_distance_days`` days only the larger is kept. Indices refer to the time axis of the input.
+    """
     reference = wave_longitude_projection(
         filtered_olr,
         wave_name=wave_name,
         lat_band=lat_band,
         antisymmetric_lat_band=antisymmetric_lat_band,
     ).sel(lon=lon_ref, method="nearest")
-    values = np.asarray(reference.values, dtype=float)
-    sigma = float(np.nanstd(values))
-    if not np.isfinite(sigma) or sigma == 0.0:
-        return np.array([], dtype=int), reference
-
-    if sign == "negative":
-        peaks, _ = find_peaks(-values, height=threshold_std * sigma, distance=min_distance_days)
-    elif sign == "positive":
-        peaks, _ = find_peaks(values, height=threshold_std * sigma, distance=min_distance_days)
-    elif sign == "absolute":
-        peaks, _ = find_peaks(np.abs(values), height=threshold_std * sigma, distance=min_distance_days)
-    else:
-        raise ValueError("`sign` must be one of {'negative', 'positive', 'absolute'}.")
-    return peaks.astype(int), reference
+    events = _find_events(
+        reference, sign=sign, threshold_std=threshold_std, min_distance_days=min_distance_days
+    )
+    return events, reference
 
 
 def detect_point_events(
@@ -688,21 +743,10 @@ def detect_point_events(
     reference.attrs["wave_projection"] = "base_point"
     reference.attrs["base_lat"] = float(reference["lat"].item())
     reference.attrs["base_lon"] = float(reference["lon"].item())
-
-    values = np.asarray(reference.values, dtype=float)
-    sigma = float(np.nanstd(values))
-    if not np.isfinite(sigma) or sigma == 0.0:
-        return np.array([], dtype=int), reference
-
-    if sign == "negative":
-        peaks, _ = find_peaks(-values, height=threshold_std * sigma, distance=min_distance_days)
-    elif sign == "positive":
-        peaks, _ = find_peaks(values, height=threshold_std * sigma, distance=min_distance_days)
-    elif sign == "absolute":
-        peaks, _ = find_peaks(np.abs(values), height=threshold_std * sigma, distance=min_distance_days)
-    else:
-        raise ValueError("`sign` must be one of {'negative', 'positive', 'absolute'}.")
-    return peaks.astype(int), reference
+    events = _find_events(
+        reference, sign=sign, threshold_std=threshold_std, min_distance_days=min_distance_days
+    )
+    return events, reference
 
 
 def select_hovmoller_window(
@@ -743,7 +787,7 @@ def _hovmoller_projection(
     if custom_lat_band is None or "lat" not in data.dims:
         return wave_longitude_projection(data, wave_name=wave_name, lat_band=lat_band)
 
-    projection = data.sel(lat=slice(*custom_lat_band)).mean("lat").rename(data.name or "wave_projection")
+    projection = _lat_range(data, *custom_lat_band).mean("lat").rename(data.name or "wave_projection")
     projection.attrs.update(data.attrs)
     projection.attrs["wave_projection"] = "off_equatorial_mean"
     projection.attrs["wave_name"] = wave_key
@@ -757,21 +801,30 @@ def lagged_composite(
     *,
     lags: Sequence[int],
 ) -> xr.DataArray:
-    """Composite a field at fixed lags relative to event indices."""
+    """Composite a field at fixed lags relative to event indices.
+
+    Events whose shifted index falls outside the record are dropped *for that lag only*, so the
+    event set can shrink towards large positive or negative lags. The number of events behind each
+    lag is returned as the ``n_events`` coordinate along ``lag``.
+    """
     composites: list[xr.DataArray] = []
+    counts: list[int] = []
     nt = data.sizes["time"]
     template = data.isel(time=0, drop=True) * np.nan
+    events = np.asarray(event_indices, dtype=int)
 
     for lag in lags:
-        lag_indices = event_indices + int(lag)
+        lag_indices = events + int(lag)
         lag_indices = lag_indices[(lag_indices >= 0) & (lag_indices < nt)]
+        counts.append(int(lag_indices.size))
         if lag_indices.size == 0:
             composite = template.copy()
         else:
             composite = data.isel(time=lag_indices).mean("time")
         composites.append(composite.expand_dims(lag=[int(lag)]))
 
-    return xr.concat(composites, dim="lag")
+    result = xr.concat(composites, dim="lag")
+    return result.assign_coords(n_events=("lag", counts))
 
 
 def _case10_lat_band(base_lat: float, *, meridional_width: float = 5.0) -> tuple[float, float]:
@@ -855,8 +908,8 @@ def compute_case10_regression_hovmoller(
     convective_proxy.attrs["long_name"] = "Convective proxy from negative OLR anomalies"
     convective_proxy.attrs["units"] = raw_olr_anomaly.attrs.get("units", "W m^-2")
 
-    shading_source = convective_proxy.sel(lat=slice(*lat_band)).mean("lat")
-    contour_source = filtered_olr.sel(lat=slice(*lat_band)).mean("lat")
+    shading_source = _lat_range(convective_proxy, *lat_band).mean("lat")
+    contour_source = _lat_range(filtered_olr, *lat_band).mean("lat")
 
     shading = _lagged_regression_slope(
         filtered_reference,
@@ -901,7 +954,7 @@ def compute_wave_eof(
     projection = CASE07_WAVE_PROJECTIONS.get(wave_key, "full")
     analysis_field = data
     if lat_range is not None and "lat" in analysis_field.dims:
-        analysis_field = analysis_field.sel(lat=slice(*lat_range))
+        analysis_field = _lat_range(analysis_field, *lat_range)
     analysis_field = _case07_component_field(analysis_field, projection=projection)
 
     eof_input = analysis_field
@@ -967,7 +1020,7 @@ def _save_wk_triplet(
     config = spectral_config or SpectralConfig()
 
     for var_name in ("olr", "u850", "v850"):
-        result = analyze_wk_spectrum(dataset[var_name].sel(lat=slice(*spectral_lat_range)), config=config)
+        result = analyze_wk_spectrum(_lat_range(dataset[var_name], *spectral_lat_range), config=config)
         figure, _ = plot_wk_spectrum(result, save_path=spectra_dir / f"wk_spectrum_{var_name}.png")
         plt.close(figure)
         save_dataset(result.to_dataset(), spectra_dir / f"wk_spectrum_{var_name}.nc")
@@ -1438,9 +1491,9 @@ def generate_local_wave_atlas(
         case05_source_name = "OLR"
         case05_note_text = "Monthly mean ± 1σ\n20°S–20°N regional mean\nOLR variance fraction"
         case05_description = "Monthly OLR variance fraction summaries for Case 05."
-        case05_raw_field = raw_olr_anomaly.sel(lat=slice(*CASE05_LAT_RANGE))
+        case05_raw_field = _lat_range(raw_olr_anomaly, *CASE05_LAT_RANGE)
         case05_filtered_fields: dict[str, xr.DataArray] = {
-            wave: multiwave_filtered_olr[wave].sel(lat=slice(*CASE05_LAT_RANGE))
+            wave: _lat_range(multiwave_filtered_olr[wave], *CASE05_LAT_RANGE)
             for wave in case05_waves
             if wave in multiwave_filtered_olr
         }
