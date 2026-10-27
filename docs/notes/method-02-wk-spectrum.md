@@ -4,7 +4,7 @@
 
 - `src/tropical_wave_tools/spectral.py`
 - `src/tropical_wave_tools/preprocessing.py`
-- `src/tropical_wave_tools/plotting.py`
+- `src/tropical_wave_tools/plotting/`
 
 ## 解决的问题
 

@@ -70,5 +70,5 @@ for wave in waves:
 ## Source Files
 
 - [`src/tropical_wave_tools/eof.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/eof.py)
-- [`src/tropical_wave_tools/plotting.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/plotting.py)
+- [`src/tropical_wave_tools/plotting/`](https://github.com/Blissful-Jasper/tropical-wave-tools/tree/main/src/tropical_wave_tools/plotting)
 - [`src/tropical_wave_tools/atlas.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/atlas.py)

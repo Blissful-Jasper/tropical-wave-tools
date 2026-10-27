@@ -46,5 +46,5 @@ plot_latlon_field(
 - [`src/tropical_wave_tools/io.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/io.py)
 - [`src/tropical_wave_tools/preprocessing.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/preprocessing.py)
 - [`src/tropical_wave_tools/stats.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/stats.py)
-- [`src/tropical_wave_tools/plotting.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/plotting.py)
+- [`src/tropical_wave_tools/plotting/`](https://github.com/Blissful-Jasper/tropical-wave-tools/tree/main/src/tropical_wave_tools/plotting)
 - [`scripts/generate_gallery.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/scripts/generate_gallery.py)

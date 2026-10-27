@@ -119,7 +119,7 @@ tropical-wave-tools local-wave-atlas \
 如果你想改图而不是只运行默认参数，最值得先看的文件是：
 
 - `src/tropical_wave_tools/atlas.py`
-- `src/tropical_wave_tools/plotting.py`
+- `src/tropical_wave_tools/plotting/`
 - `scripts/generate_gallery.py`
 
 ### `atlas.py` 负责什么
@@ -312,6 +312,6 @@ PYTHONNOUSERSITE=1
 2. `docs/getting-started.md`
 3. `docs/examples.md`
 4. `src/tropical_wave_tools/atlas.py`
-5. `src/tropical_wave_tools/plotting.py`
+5. `src/tropical_wave_tools/plotting/`
 
 这样最容易建立“数据 -> 诊断 -> 图形 -> 文档展示”的整体心智模型。

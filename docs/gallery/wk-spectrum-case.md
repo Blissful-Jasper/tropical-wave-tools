@@ -21,6 +21,6 @@ fig, axes = plot_wk_spectrum(result, annotate_filter_boxes=True)
 ## Source Files
 
 - [`src/tropical_wave_tools/spectral.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/spectral.py)
-- [`src/tropical_wave_tools/plotting.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/plotting.py)
+- [`src/tropical_wave_tools/plotting/`](https://github.com/Blissful-Jasper/tropical-wave-tools/tree/main/src/tropical_wave_tools/plotting)
 - [`examples/wk_spectrum_demo.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/examples/wk_spectrum_demo.py)
 - [`scripts/generate_gallery.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/scripts/generate_gallery.py)

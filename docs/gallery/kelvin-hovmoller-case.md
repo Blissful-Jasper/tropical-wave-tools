@@ -65,6 +65,6 @@ for wave_name in ["kelvin", "er", "mjo", "mrg"]:
 ## Source Files
 
 - [`src/tropical_wave_tools/filters.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/filters.py)
-- [`src/tropical_wave_tools/plotting.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/plotting.py)
+- [`src/tropical_wave_tools/plotting/`](https://github.com/Blissful-Jasper/tropical-wave-tools/tree/main/src/tropical_wave_tools/plotting)
 - [`src/tropical_wave_tools/atlas.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/atlas.py)
 - [`scripts/generate_gallery.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/scripts/generate_gallery.py)

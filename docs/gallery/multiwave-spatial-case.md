@@ -57,5 +57,5 @@ for group_name, waves in wave_groups.items():
 ## Source Files
 
 - [`src/tropical_wave_tools/filters.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/filters.py)
-- [`src/tropical_wave_tools/plotting.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/plotting.py)
+- [`src/tropical_wave_tools/plotting/`](https://github.com/Blissful-Jasper/tropical-wave-tools/tree/main/src/tropical_wave_tools/plotting)
 - [`scripts/generate_gallery.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/scripts/generate_gallery.py)
