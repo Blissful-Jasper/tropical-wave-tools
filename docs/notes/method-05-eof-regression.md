@@ -3,7 +3,7 @@
 ## 对应代码
 
 - `src/tropical_wave_tools/eof.py`
-- `src/tropical_wave_tools/atlas.py`
+- `src/tropical_wave_tools/atlas/`
 - `src/tropical_wave_tools/plotting/`
 
 ## 解决的问题

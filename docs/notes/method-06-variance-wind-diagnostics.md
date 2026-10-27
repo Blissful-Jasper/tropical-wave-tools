@@ -2,7 +2,7 @@
 
 ## 对应代码
 
-- `src/tropical_wave_tools/atlas.py`
+- `src/tropical_wave_tools/atlas/`
 - `src/tropical_wave_tools/diagnostics.py`
 - `src/tropical_wave_tools/stats.py`
 

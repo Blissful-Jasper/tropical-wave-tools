@@ -66,7 +66,6 @@ def get_cckw_envelope_curve(
     return [x_curve], [y_curve]
 
 
-
 def _plot_dispersion_guides(
     ax: plt.Axes,
     *,
@@ -134,7 +133,6 @@ def _plot_dispersion_guides(
             )
 
 
-
 def _wave_frequency_bounds(wave_name: str) -> tuple[float, float]:
     """Convert one wave's period range into frequency bounds."""
     spec = DEFAULT_WAVE_SPECS[wave_name.lower()]
@@ -142,7 +140,6 @@ def _wave_frequency_bounds(wave_name: str) -> tuple[float, float]:
     if period_min is None or period_max is None:
         raise ValueError(f"Wave {wave_name} does not define closed period bounds.")
     return (1.0 / float(period_max), 1.0 / float(period_min))
-
 
 
 def _add_wk_filter_box(
@@ -173,7 +170,6 @@ def _add_wk_filter_box(
     return rectangle
 
 
-
 def _set_wk_legend(
     ax: plt.Axes,
     *,
@@ -201,7 +197,6 @@ def _set_wk_legend(
 
     legend = ax.legend(selected_handles, selected_labels, **legend_kwargs)
     legend.get_frame().set_edgecolor("#d4d4d8")
-
 
 
 def plot_wk_spectrum(

@@ -135,7 +135,6 @@ PUBLICATION_CMAPS: dict[str, LinearSegmentedColormap] = {
 }
 
 
-
 SCIENTIFIC_MPL_STYLE: dict[str, object] = {
     "figure.facecolor": "white",
     "axes.facecolor": "#fbfcff",
@@ -162,11 +161,9 @@ SCIENTIFIC_MPL_STYLE: dict[str, object] = {
 }
 
 
-
 def get_publication_cmap(name: str) -> str | LinearSegmentedColormap:
     """Return one of the package publication colormaps."""
     return PUBLICATION_CMAPS.get(name, name)
-
 
 
 @contextmanager
@@ -179,14 +176,12 @@ def scientific_plot_style(overrides: dict[str, object] | None = None):
         yield
 
 
-
 def use_scientific_style(overrides: dict[str, object] | None = None) -> None:
     """Apply the package plotting style globally for scripts or notebooks."""
     style = dict(SCIENTIFIC_MPL_STYLE)
     if overrides:
         style.update(overrides)
     plt.rcParams.update(style)
-
 
 
 def _apply_axes_style(ax: plt.Axes, *, grid: bool = False) -> None:
@@ -200,7 +195,6 @@ def _apply_axes_style(ax: plt.Axes, *, grid: bool = False) -> None:
         ax.grid(True, color="#cbd5e1", alpha=0.35, linewidth=0.55)
 
 
-
 def _symmetric_limit(data: xr.DataArray, *, quantile: float = 0.98) -> float:
     """Return a robust symmetric range for anomaly-style plots."""
     limit = float(np.abs(data).quantile(quantile).item())
@@ -211,13 +205,11 @@ def _symmetric_limit(data: xr.DataArray, *, quantile: float = 0.98) -> float:
     return limit
 
 
-
 def _std_label(data: xr.DataArray) -> str:
     """Build a compact standard-deviation label."""
     units = str(data.attrs.get("units", "")).strip()
     units = _format_units_for_mathtext(units)
     return f"STD ({units})" if units else "STD"
-
 
 
 def _field_label(prefix: str, data: xr.DataArray) -> str:
@@ -227,13 +219,11 @@ def _field_label(prefix: str, data: xr.DataArray) -> str:
     return f"{prefix} ({units})" if units else prefix
 
 
-
 def _format_units_for_mathtext(units: str) -> str:
     """Render simple power syntax like s^-1 using Matplotlib mathtext superscripts."""
     if not units:
         return units
     return re.sub(r"\^(-?\d+)", lambda match: f"$^{{{match.group(1)}}}$", units)
-
 
 
 def _filled_levels(vmin: float, vmax: float, *, count: int = 19) -> np.ndarray:
@@ -247,7 +237,6 @@ def _filled_levels(vmin: float, vmax: float, *, count: int = 19) -> np.ndarray:
         vmin -= span
         vmax += span
     return np.linspace(vmin, vmax, count)
-
 
 
 def _nice_step(span: float, *, target_steps: int = 8, integer: bool = False) -> float:
@@ -265,7 +254,6 @@ def _nice_step(span: float, *, target_steps: int = 8, integer: bool = False) -> 
     return float(step)
 
 
-
 def _finite_abs_max(data: object) -> float:
     """Return the finite absolute maximum of a field."""
     values = np.asarray(getattr(data, "values", data), dtype=float)
@@ -273,7 +261,6 @@ def _finite_abs_max(data: object) -> float:
     if finite.size == 0:
         return 0.0
     return float(np.nanmax(np.abs(finite)))
-
 
 
 def _signed_levels_from_data(data: object, *, target_steps: int = 6) -> np.ndarray:
@@ -288,7 +275,6 @@ def _signed_levels_from_data(data: object, *, target_steps: int = 6) -> np.ndarr
     if levels.size == 0:
         levels = np.array([-vmax, vmax])
     return levels
-
 
 
 def _normalize_cycle_values(
@@ -313,7 +299,6 @@ def _normalize_cycle_values(
     if not np.isfinite(denominator) or np.isclose(denominator, 0.0):
         return series.copy(), np.nan
     return series / denominator, denominator
-
 
 
 def _integer_levels_from_data(
@@ -356,7 +341,6 @@ def _integer_levels_from_data(
     return levels, ticks
 
 
-
 def _continuous_symmetric_levels_from_data(
     data: object,
     *,
@@ -376,7 +360,6 @@ def _continuous_symmetric_levels_from_data(
     levels = _filled_levels(-vmax, vmax, count=count)
     ticks = np.arange(-vmax, vmax + 0.5 * tick_step, tick_step)
     return levels, ticks, float(vmax)
-
 
 
 def _scientific_integer_levels_from_data(
@@ -403,7 +386,6 @@ def _scientific_integer_levels_from_data(
     return levels, ticks, bound
 
 
-
 def _style_colorbar(
     cbar: object,
     *,
@@ -426,7 +408,6 @@ def _style_colorbar(
     cbar.ax.tick_params(labelsize=8.8, colors="#334155")
     cbar.outline.set_edgecolor("#cbd5e1")
     cbar.outline.set_linewidth(0.75)
-
 
 
 def _add_shared_colorbar(
@@ -474,7 +455,6 @@ def _add_shared_colorbar(
     return cbar
 
 
-
 def _is_weak_signal(data: object, *, threshold: float = 0.1) -> bool:
     """Return whether a field or series is effectively zero at plotting scale."""
     values = getattr(data, "values", data)
@@ -484,7 +464,6 @@ def _is_weak_signal(data: object, *, threshold: float = 0.1) -> bool:
         return True
     peak = float(np.nanmax(np.abs(array[finite])))
     return (not np.isfinite(peak)) or peak < threshold
-
 
 
 def _add_panel_label(ax: plt.Axes, label: str) -> None:
@@ -504,7 +483,6 @@ def _add_panel_label(ax: plt.Axes, label: str) -> None:
     )
 
 
-
 def _wave_title_name(wave_name: str | None) -> str:
     """Return a publication-friendly wave label."""
     if wave_name is None:
@@ -517,7 +495,6 @@ def _wave_title_name(wave_name: str | None) -> str:
         "td": "Tropical Disturbance",
     }
     return mapping.get(wave_name.lower(), wave_name.upper())
-
 
 
 def save_figure(figure: plt.Figure, path: str | Path, *, dpi: int = 200) -> Path:

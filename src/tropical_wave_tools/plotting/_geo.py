@@ -20,7 +20,6 @@ except ImportError:  # pragma: no cover - optional dependency
     add_cyclic_point = None
 
 
-
 def _format_longitude_label(value: float) -> str:
     """Format 0-360 longitudes into compact E/W labels for Hovmoller axes."""
     lon = float(value) % 360.0
@@ -33,13 +32,11 @@ def _format_longitude_label(value: float) -> str:
     return f"{round(360.0 - lon)}W"
 
 
-
 def _default_map_projection() -> tuple[object, object]:
     """Return the display and data CRS for lat-lon diagnostics."""
     if ccrs is None:  # pragma: no cover - optional dependency
         raise ImportError("cartopy is required for projected plotting.")
     return ccrs.PlateCarree(central_longitude=180.0), ccrs.PlateCarree()
-
 
 
 def _has_cartopy_feature(name: str, *, category: str = "physical", scale: str = "110m") -> bool:
@@ -51,7 +48,6 @@ def _has_cartopy_feature(name: str, *, category: str = "physical", scale: str = 
         return False
     feature_path = data_dir / "shapefiles" / "natural_earth" / category / f"ne_{scale}_{name}.shp"
     return feature_path.exists()
-
 
 
 def _add_map_guides(
@@ -86,7 +82,6 @@ def _add_map_guides(
         gridlines.ylabel_style = {"size": 8.4, "color": "#475569"}
 
 
-
 def _prepare_projected_field(data: xr.DataArray) -> xr.DataArray:
     """Add a cyclic point when the longitude span is effectively global."""
     if add_cyclic_point is None or "lon" not in data.coords:
@@ -106,7 +101,6 @@ def _prepare_projected_field(data: xr.DataArray) -> xr.DataArray:
         attrs=data.attrs,
         name=data.name,
     )
-
 
 
 def _set_map_extent_from_field(ax: plt.Axes, data: xr.DataArray, data_crs: object) -> None:
@@ -148,7 +142,6 @@ def _set_map_extent_from_field(ax: plt.Axes, data: xr.DataArray, data_crs: objec
             ax.set_global()
 
 
-
 def _case07_focus_half_width(wave_name: str | None) -> float:
     """Return a longitude half-width tuned for Case 07 focused maps."""
     widths = {
@@ -161,7 +154,6 @@ def _case07_focus_half_width(wave_name: str | None) -> float:
     if wave_name is None:
         return 90.0
     return widths.get(wave_name.lower(), 90.0)
-
 
 
 def _focus_longitude_center(data: xr.DataArray) -> float:
@@ -177,7 +169,6 @@ def _focus_longitude_center(data: xr.DataArray) -> float:
         return 180.0
     index = int(np.nanargmax(values))
     return float(reduced["lon"].values[index])
-
 
 
 def _subset_longitude_window(

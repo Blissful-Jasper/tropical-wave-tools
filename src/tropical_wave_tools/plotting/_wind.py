@@ -35,7 +35,6 @@ def _quiver_reference_value(
     return max(_nice_step(representative, target_steps=4, integer=False), 0.1)
 
 
-
 def _journal_quiver_kwargs(
     *,
     quiver_scale: float | None,
@@ -65,7 +64,6 @@ def _journal_quiver_kwargs(
     if quiver_scale is not None:
         kwargs["scale"] = quiver_scale
     return kwargs
-
 
 
 def _add_quiver_key(
@@ -99,7 +97,6 @@ def _add_quiver_key(
         }
     )
     return key
-
 
 
 def _add_reference_vector_legend(
@@ -143,7 +140,6 @@ def _add_reference_vector_legend(
     )
 
 
-
 def _prefer_zonal_wind_contours(zonal_wind: xr.DataArray, meridional_wind: xr.DataArray) -> bool:
     """Prefer zonal-wind contours when meridional wind is unresolved."""
     zonal_peak = _finite_abs_max(zonal_wind)
@@ -151,7 +147,6 @@ def _prefer_zonal_wind_contours(zonal_wind: xr.DataArray, meridional_wind: xr.Da
     if zonal_peak <= 0.0:
         return False
     return meridional_peak < max(0.05, 0.15 * zonal_peak)
-
 
 
 def _plot_zonal_wind_contours(
@@ -199,7 +194,6 @@ def _plot_zonal_wind_contours(
             add_colorbar=False,
             **({"ax": axis, "transform": data_crs} if use_cartopy and data_crs is not None else {"ax": axis}),
         )
-
 
 
 def _overlay_anomaly_contours(

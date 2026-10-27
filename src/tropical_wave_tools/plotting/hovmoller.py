@@ -55,7 +55,6 @@ def plot_time_series(
         return figure, ax
 
 
-
 def plot_hovmoller_comparison(
     left: xr.DataArray,
     right: xr.DataArray,
@@ -135,7 +134,6 @@ def plot_hovmoller_comparison(
         return figure, axes
 
 
-
 def plot_hovmoller_triptych(
     fields: Sequence[xr.DataArray],
     *,
@@ -184,7 +182,6 @@ def plot_hovmoller_triptych(
         if save_path is not None:
             save_figure(figure, save_path)
         return figure, axes
-
 
 
 def plot_paper_style_hovmoller(
@@ -316,7 +313,6 @@ def plot_paper_style_hovmoller(
         if save_path is not None:
             save_figure(figure, save_path)
         return figure, axis
-
 
 
 def plot_lag_longitude_evolution(

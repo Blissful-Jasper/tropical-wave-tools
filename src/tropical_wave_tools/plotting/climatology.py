@@ -60,7 +60,6 @@ def plot_monthly_cycle(
         return figure, axis
 
 
-
 def plot_case05_seasonal_variance_cycles(
     tropical_mean: xr.DataArray,
     tropical_std: xr.DataArray,
@@ -123,7 +122,6 @@ def plot_case05_seasonal_variance_cycles(
         if save_path is not None:
             save_figure(figure, save_path)
         return figure, axes
-
 
 
 def plot_case05_regional_variance_cycles(
@@ -226,7 +224,6 @@ def plot_case05_regional_variance_cycles(
         return figure, axes
 
 
-
 def plot_monthly_longitude_heatmap(
     data: xr.DataArray,
     *,
@@ -263,7 +260,6 @@ def plot_monthly_longitude_heatmap(
         if save_path is not None:
             save_figure(figure, save_path)
         return figure, axis
-
 
 
 def plot_wave_monthly_cycle_comparison(
@@ -368,7 +364,6 @@ def plot_wave_monthly_cycle_comparison(
         return figure, axes
 
 
-
 def plot_wave_monthly_longitude_comparison(
     monthly_longitude_fields: Sequence[xr.DataArray],
     *,
@@ -468,7 +463,6 @@ def plot_wave_monthly_longitude_comparison(
         if save_path is not None:
             save_figure(figure, save_path)
         return figure, axes
-
 
 
 def plot_wave_annual_trend_comparison(

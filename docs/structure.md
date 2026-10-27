@@ -12,11 +12,17 @@ tropical-wave-tools/
 ├── scripts/               # 数据准备、建站、发布脚本
 ├── src/tropical_wave_tools/
 │   ├── io.py
-│   ├── preprocess.py
-│   ├── spectral.py
-│   ├── filters.py
+│   ├── preprocessing.py       # 选区、气候态/异常、去趋势、平滑（原 preprocess.py 已并入）
+│   ├── spectral.py            # WK 频率-波数谱
+│   ├── filters.py             # 波动滤波（对齐 NCL kf_filter）
 │   ├── stats.py
-│   ├── plotting.py
+│   ├── eof.py  phase.py  matsuno.py  cross_spectrum.py  diagnostics.py
+│   ├── plotting/              # 按主题拆分的绘图包
+│   │   ├── _style.py  _geo.py  _wind.py        # 共享的样式、地图、风矢量辅助
+│   │   └── spectrum.py  hovmoller.py  maps.py  eof.py  climatology.py
+│   ├── atlas/                 # 本地波动图集
+│   │   ├── _config.py  _paths.py                # 各 Case 常量、数据路径
+│   │   └── monthly.py  events.py  case10.py  wave_eof.py  workflow.py
 │   ├── workflows.py
 │   └── ...
 └── tests/
@@ -55,11 +61,17 @@ tropical-wave-tools/
 ├── scripts/
 ├── src/tropical_wave_tools/
 │   ├── io.py
-│   ├── preprocess.py
-│   ├── spectral.py
-│   ├── filters.py
+│   ├── preprocessing.py       # 选区、气候态/异常、去趋势、平滑（原 preprocess.py 已并入）
+│   ├── spectral.py            # WK 频率-波数谱
+│   ├── filters.py             # 波动滤波（对齐 NCL kf_filter）
 │   ├── stats.py
-│   ├── plotting.py
+│   ├── eof.py  phase.py  matsuno.py  cross_spectrum.py  diagnostics.py
+│   ├── plotting/              # 按主题拆分的绘图包
+│   │   ├── _style.py  _geo.py  _wind.py        # 共享的样式、地图、风矢量辅助
+│   │   └── spectrum.py  hovmoller.py  maps.py  eof.py  climatology.py
+│   ├── atlas/                 # 本地波动图集
+│   │   ├── _config.py  _paths.py                # 各 Case 常量、数据路径
+│   │   └── monthly.py  events.py  case10.py  wave_eof.py  workflow.py
 │   ├── workflows.py
 │   └── ...
 └── tests/

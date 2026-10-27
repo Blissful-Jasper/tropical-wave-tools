@@ -137,7 +137,6 @@ def plot_eof_spatial_patterns_and_pcs(
         return figure, axes
 
 
-
 def plot_eof_modes_with_wind(
     eofs: xr.DataArray,
     zonal_wind_patterns: xr.DataArray,
@@ -284,7 +283,6 @@ def plot_eof_modes_with_wind(
         if save_path is not None:
             save_figure(figure, save_path)
         return figure, axes
-
 
 
 def plot_multiwave_eof_summary(

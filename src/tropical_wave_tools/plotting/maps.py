@@ -161,7 +161,6 @@ def plot_latlon_field(
         return figure, ax
 
 
-
 def plot_spatial_std_comparison(
     legacy_std: xr.DataArray,
     cckw_std: xr.DataArray,
@@ -273,7 +272,6 @@ def plot_spatial_std_comparison(
         return figure, axes
 
 
-
 def plot_spatial_std_triptych(
     olr_std: xr.DataArray,
     u_std: xr.DataArray,
@@ -346,7 +344,6 @@ def plot_spatial_std_triptych(
         if save_path is not None:
             save_figure(figure, save_path)
         return figure, axes
-
 
 
 def plot_wave_spatial_comparison(
@@ -481,7 +478,6 @@ def plot_wave_spatial_comparison(
         return figure, axes
 
 
-
 def plot_wind_diagnostics_panel(
     divergence: xr.DataArray,
     vorticity: xr.DataArray,
@@ -570,7 +566,6 @@ def plot_wind_diagnostics_panel(
         if save_path is not None:
             save_figure(figure, save_path)
         return figure, axes
-
 
 
 def plot_horizontal_structure(
@@ -680,7 +675,6 @@ def plot_horizontal_structure(
         if save_path is not None:
             save_figure(figure, save_path)
         return figure, axis
-
 
 
 def plot_wave_horizontal_structure_comparison(
@@ -809,7 +803,6 @@ def plot_wave_horizontal_structure_comparison(
         if save_path is not None:
             save_figure(figure, save_path)
         return figure, axes
-
 
 
 def plot_lagged_horizontal_structure(
@@ -1031,7 +1024,6 @@ def plot_lagged_horizontal_structure(
         if save_path is not None:
             save_figure(figure, save_path)
         return figure, axes
-
 
 
 def plot_wave_evolution_comparison(

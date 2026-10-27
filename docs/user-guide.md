@@ -118,7 +118,7 @@ tropical-wave-tools local-wave-atlas \
 
 如果你想改图而不是只运行默认参数，最值得先看的文件是：
 
-- `src/tropical_wave_tools/atlas.py`
+- `src/tropical_wave_tools/atlas/`
 - `src/tropical_wave_tools/plotting/`
 - `scripts/generate_gallery.py`
 
@@ -139,9 +139,9 @@ tropical-wave-tools local-wave-atlas \
 
 通常都先改这里。
 
-### `plotting.py` 负责什么
+### `plotting/` 负责什么
 
-`plotting.py` 更像“画图风格层”。这里集中定义了：
+`plotting/` 更像“画图风格层”，按主题拆成 `spectrum`、`hovmoller`、`maps`、`eof`、`climatology` 五个模块，共享的样式与辅助函数在 `_style`、`_geo`、`_wind` 中；`from tropical_wave_tools.plotting import ...` 的写法不变。这里集中定义了：
 
 - colormap
 - colorbar
@@ -195,7 +195,7 @@ tropical-wave-tools filter-wave \
 
 看这里：
 
-- `src/tropical_wave_tools/atlas.py` 里的 `DEFAULT_LOCAL_PATHS`
+- `src/tropical_wave_tools/atlas/` 里的 `DEFAULT_LOCAL_PATHS`
 
 这种方式更适合把项目整理成固定工作流。
 
@@ -311,7 +311,7 @@ PYTHONNOUSERSITE=1
 1. `README.md`
 2. `docs/getting-started.md`
 3. `docs/examples.md`
-4. `src/tropical_wave_tools/atlas.py`
+4. `src/tropical_wave_tools/atlas/`
 5. `src/tropical_wave_tools/plotting/`
 
 这样最容易建立“数据 -> 诊断 -> 图形 -> 文档展示”的整体心智模型。

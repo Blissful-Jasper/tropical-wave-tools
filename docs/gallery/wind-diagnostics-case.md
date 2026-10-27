@@ -47,4 +47,4 @@ for wave_name in ["kelvin", "er", "mjo", "mrg", "td"]:
 
 - [`src/tropical_wave_tools/diagnostics.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/diagnostics.py)
 - [`src/tropical_wave_tools/plotting/`](https://github.com/Blissful-Jasper/tropical-wave-tools/tree/main/src/tropical_wave_tools/plotting)
-- [`src/tropical_wave_tools/atlas.py`](https://github.com/Blissful-Jasper/tropical-wave-tools/blob/main/src/tropical_wave_tools/atlas.py)
+- [`src/tropical_wave_tools/atlas/`](https://github.com/Blissful-Jasper/tropical-wave-tools/tree/main/src/tropical_wave_tools/atlas)

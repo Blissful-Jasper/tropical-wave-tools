@@ -1,25 +1,91 @@
-"""High-level local-data atlas generation for equatorial wave diagnostics."""
+"""Figure titles, label formatting and the end-to-end local wave atlas workflow."""
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import xarray as xr
-from scipy.signal import find_peaks
 
+from tropical_wave_tools.atlas._config import (
+    CASE03_HOV_LON_REFS,
+    CASE04_LAT_RANGE,
+    CASE04_WAVES,
+    CASE05_LAT_RANGE,
+    CASE05_PRECIP_VARIABLE,
+    CASE05_REGION_LABELS,
+    CASE05_REGION_RANGES,
+    CASE05_WAVES,
+    CASE06_WAVE_QUIVER_SCALES,
+    CASE06_WAVE_QUIVER_STRIDES,
+    CASE07_WAVE_QUIVER_SCALES,
+    CASE07_WAVE_QUIVER_STRIDES,
+    CASE07_WAVES,
+    CASE08_EVENT_BASE_POINTS,
+    CASE08_EVENT_LAT_BANDS,
+    CASE08_EVENT_LON_REFS,
+    CASE08_EVENT_MIN_SPACING,
+    CASE08_WAVE_FOCUS_CENTERS,
+    CASE08_WAVE_FOCUS_HALF_WIDTH,
+    CASE08_WAVE_LAGS,
+    CASE08_WAVE_MAP_LAGS,
+    CASE08_WAVE_OLR_LEVEL_COUNT,
+    CASE08_WAVE_OLR_MIN_LIMIT,
+    CASE08_WAVE_OLR_RANGE_SCALE,
+    CASE08_WAVE_QUIVER_SCALES,
+    CASE08_WAVE_QUIVER_STRIDES,
+    CASE08_WAVE_QUIVER_WIDTHS,
+    CASE09_WAVES,
+    CASE10_BASE_POINTS,
+    CASE10_CONTOUR_TARGET_STEPS,
+    CASE10_FIGURE_SIZES,
+    CASE10_SHADING_MIN_LIMIT,
+    CASE10_SHADING_RANGE_SCALE,
+    CASE10_WAVES,
+    CASE10_XTICKS,
+    COMPARISON_WAVE_GROUPS,
+    WAVE_HOVMOLLER_WINDOWS,
+    WAVE_PROPAGATION_DIRECTIONS,
+    WAVE_QUIVER_SCALES,
+)
+from tropical_wave_tools.atlas._paths import (
+    DEFAULT_LOCAL_PATHS,
+    PathLike,
+    fill_missing_with_time_mean,
+    load_local_wave_fields,
+)
+from tropical_wave_tools.atlas.case10 import (
+    compute_case10_regression_hovmoller,
+)
+from tropical_wave_tools.atlas.events import (
+    _hovmoller_projection,
+    _lat_range,
+    detect_point_events,
+    detect_wave_events,
+    lagged_composite,
+    select_hovmoller_window,
+    wave_longitude_projection,
+)
+from tropical_wave_tools.atlas.monthly import (
+    compute_longitude_mean_monthly_rms_climatology_and_significance,
+    compute_monthly_climatology_and_significance,
+    compute_monthly_rms,
+    compute_monthly_variance_fraction_samples,
+    compute_yearly_rms,
+    summarize_variance_fraction_cycle,
+)
+from tropical_wave_tools.atlas.wave_eof import (
+    compute_wave_eof,
+    regress_field_onto_pcs,
+)
 from tropical_wave_tools.config import DEFAULT_WAVE_SPECS, SpectralConfig
 from tropical_wave_tools.diagnostics import (
-    area_weighted_mean,
     horizontal_divergence,
     relative_vorticity,
 )
-from tropical_wave_tools.eof import EOFAnalyzer
 from tropical_wave_tools.filters import filter_wave_signal
 from tropical_wave_tools.io import load_dataarray, save_dataset
 from tropical_wave_tools.plotting import (
@@ -43,297 +109,7 @@ from tropical_wave_tools.plotting import (
 )
 from tropical_wave_tools.preprocessing import compute_anomaly
 from tropical_wave_tools.spectral import analyze_wk_spectrum
-from tropical_wave_tools.stats import linear_regression, linear_trend, one_sample_ttest
-
-PathLike = Union[str, Path]
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-
-def _resolve_local_project_path(path: PathLike) -> Path:
-    """Resolve local-data paths relative to the repository when needed."""
-    candidate = Path(path).expanduser()
-    if candidate.is_absolute():
-        return candidate
-    if candidate.exists():
-        return candidate.resolve()
-    return (_PROJECT_ROOT / candidate).resolve()
-
-DEFAULT_LOCAL_PATHS = {
-    "olr": _resolve_local_project_path("data/local/olr.day.mean.nc"),
-    "gpcp": _resolve_local_project_path("data/local/GPCP_data_1997-2020-2.5x2.5_stand.nc"),
-    "u850": _resolve_local_project_path("data/local/uwnd_850hPa_1979-2024.nc"),
-    "v850": _resolve_local_project_path("data/local/vwnd_850hPa_1979-2024.nc"),
-}
-
-COMPARISON_WAVE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("large_scale", ("kelvin", "er", "mjo")),
-    ("westward", ("mrg", "td")),
-)
-
-CASE04_WAVES: tuple[str, ...] = ("kelvin", "er", "mjo", "mrg", "td")
-CASE04_LAT_RANGE: tuple[float, float] = (-25.0, 25.0)
-CASE05_WAVES: tuple[str, ...] = ("kelvin", "er", "mrg", "td")
-CASE05_LAT_RANGE: tuple[float, float] = (-20.0, 20.0)
-CASE05_REGION_RANGES: tuple[tuple[str, tuple[float, float]], ...] = (
-    ("africa", (343.0, 50.0)),
-    ("indian_ocean", (51.0, 94.0)),
-    ("maritime_continent", (95.0, 150.0)),
-    ("west_pacific", (151.0, 210.0)),
-    ("east_pacific", (211.0, 270.0)),
-    ("america", (271.0, 325.0)),
-    ("atlantic", (326.0, 342.0)),
-)
-CASE05_REGION_LABELS: dict[str, str] = {
-    "africa": "Africa",
-    "indian_ocean": "Indian Ocean",
-    "maritime_continent": "Maritime Continent",
-    "west_pacific": "West Pacific",
-    "east_pacific": "East Pacific",
-    "america": "America",
-    "atlantic": "Atlantic",
-}
-CASE05_PRECIP_VARIABLE = "precipitation"
-CASE06_WAVE_QUIVER_STRIDES: dict[str, int] = {
-    "kelvin": 3,
-    "er": 3,
-    "mjo": 4,
-    "mrg": 3,
-    "td": 2,
-}
-CASE06_WAVE_QUIVER_SCALES: dict[str, float] = {
-    "kelvin": 20.0,
-    "er": 22.0,
-    "mjo": 26.0,
-    "mrg": 18.0,
-    "td": 10.0,
-}
-CASE07_WAVES: tuple[str, ...] = ("kelvin", "er", "mjo", "mrg", "td")
-CASE07_WAVE_LAT_RANGES: dict[str, tuple[float, float]] = {
-    "kelvin": (-12.5, 12.5),
-    "er": (-18.0, 18.0),
-    "mjo": (-20.0, 20.0),
-    "mrg": (-18.0, 18.0),
-    "td": (-22.5, 22.5),
-}
-CASE07_WAVE_PROJECTIONS: dict[str, str] = {
-    "kelvin": "symmetric",
-    "er": "symmetric",
-    "mjo": "full",
-    "mrg": "antisymmetric",
-    "td": "full",
-}
-CASE07_WAVE_QUIVER_STRIDES: dict[str, int] = {
-    "kelvin": 3,
-    "er": 3,
-    "mjo": 4,
-    "mrg": 3,
-    "td": 3,
-}
-CASE07_WAVE_QUIVER_SCALES: dict[str, float] = {
-    "kelvin": 18.0,
-    "er": 18.0,
-    "mjo": 17.0,
-    "mrg": 15.0,
-    "td": 16.0,
-}
-CASE08_WAVE_LAGS: dict[str, tuple[int, ...]] = {
-    "kelvin": (-6, -4, -2, 0, 2, 4, 6),
-    "er": (-12, -10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10, 12),
-    "mjo": (-24, -18, -12, -6, 0, 6, 12, 18, 24),
-    "mrg": (-3, -2, -1, 0, 1, 2, 3),
-    "td": (-4, -2, 0, 2, 4),
-}
-CASE08_WAVE_MAP_LAGS: dict[str, tuple[int, ...]] = {
-    "kelvin": (-4, -2, 0, 2, 4),
-    "er": (-12, -6, 0, 6, 12),
-    "mjo": (-24, -12, 0, 12, 24),
-    "mrg": (-2, -1, 0, 1, 2),
-    "td": (-4, -2, 0, 2, 4),
-}
-CASE08_WAVE_FOCUS_HALF_WIDTH: dict[str, float] = {
-    "kelvin": 80.0,
-    "er": 90.0,
-    "mjo": 100.0,
-    "mrg": 75.0,
-    "td": 75.0,
-}
-CASE08_WAVE_FOCUS_CENTERS: dict[str, float] = {
-    "kelvin": 200.0,
-    "er": 172.5,
-    "mrg": 172.5,
-    "td": 133.0,
-    "mjo": 150.0,
-}
-CASE08_EVENT_LAT_BANDS: dict[str, tuple[float, float]] = {
-    "td": (5.0, 15.0),
-}
-CASE08_EVENT_LON_REFS: dict[str, float] = {
-    "er": 172.5,
-    "mrg": 172.5,
-    "td": 133.0,
-    "mjo": 150.0,
-}
-CASE08_EVENT_BASE_POINTS: dict[str, tuple[float, float]] = {
-    "kelvin": (7.0, 200.0),
-    "er": (7.5, 172.5),
-    "mrg": (7.5, 172.5),
-    "td": (7.5, 133.0),
-}
-CASE08_EVENT_MIN_SPACING: dict[str, int] = {
-    "kelvin": 3,
-    "er": 8,
-    "mjo": 12,
-    "mrg": 4,
-    "td": 4,
-}
-CASE08_WAVE_QUIVER_STRIDES: dict[str, int] = {
-    "kelvin": 2,
-    "er": 2,
-    "mjo": 3,
-    "mrg": 2,
-    "td": 2,
-}
-CASE08_WAVE_QUIVER_SCALES: dict[str, float] = {
-    "kelvin": 8.5,
-    "er": 10.5,
-    "mjo": 8.0,
-    "mrg": 7.5,
-    "td": 6.5,
-}
-CASE08_WAVE_QUIVER_WIDTHS: dict[str, float] = {
-    "kelvin": 0.0020,
-    "er": 0.00195,
-    "mjo": 0.00185,
-    "mrg": 0.0020,
-    "td": 0.00205,
-}
-CASE08_WAVE_OLR_LEVEL_COUNT: dict[str, int] = {
-    "kelvin": 37,
-    "er": 37,
-    "mjo": 33,
-    "mrg": 37,
-    "td": 33,
-}
-CASE08_WAVE_OLR_RANGE_SCALE: dict[str, float] = {
-    "kelvin": 1.5,
-    "er": 1.45,
-    "mjo": 1.25,
-    "mrg": 1.5,
-    "td": 1.6,
-}
-CASE08_WAVE_OLR_MIN_LIMIT: dict[str, float] = {
-    "kelvin": 12.0,
-    "er": 10.0,
-    "mjo": 12.0,
-    "mrg": 10.0,
-    "td": 5.0,
-}
-CASE09_WAVES: tuple[str, ...] = ("kelvin", "er", "mjo", "mrg", "td")
-CASE10_WAVES: tuple[str, ...] = ("kelvin", "er", "mjo", "mrg", "td")
-CASE10_BASE_POINTS: dict[str, tuple[float, float]] = {
-    "kelvin": (7.0, 200.0),
-    "er": (7.5, 172.5),
-    "mjo": (0.0, 90.0),
-    "mrg": (7.5, 172.5),
-    "td": (7.5, 133.0),
-}
-CASE10_LAGS: dict[str, tuple[int, ...]] = {
-    "kelvin": tuple(range(-15, 16)),
-    "er": tuple(range(-20, 21)),
-    "mjo": tuple(range(-35, 36)),
-    "mrg": tuple(range(-10, 11)),
-    "td": tuple(range(-8, 9)),
-}
-CASE10_WINDOW_VARIANCE_DAYS: dict[str, int] = {
-    "kelvin": 17,
-    "er": 72,
-    "mjo": 96,
-    "mrg": 10,
-    "td": 10,
-}
-CASE10_LON_WINDOWS: dict[str, tuple[float, float]] = {
-    "kelvin": (90.0, 320.0),
-    "er": (30.0, 285.0),
-    "mjo": (30.0, 270.0),
-    "mrg": (70.0, 255.0),
-    "td": (75.0, 225.0),
-}
-CASE10_XTICKS: dict[str, tuple[float, ...]] = {
-    "kelvin": (90.0, 135.0, 180.0, 225.0, 270.0, 315.0),
-    "er": (30.0, 90.0, 150.0, 210.0, 270.0),
-    "mjo": (30.0, 90.0, 150.0, 210.0, 270.0),
-    "mrg": (75.0, 120.0, 165.0, 210.0, 255.0),
-    "td": (75.0, 112.5, 150.0, 187.5, 225.0),
-}
-CASE10_SHADING_RANGE_SCALE: dict[str, float] = {
-    "kelvin": 1.65,
-    "er": 1.7,
-    "mjo": 1.35,
-    "mrg": 1.65,
-    "td": 1.8,
-}
-CASE10_SHADING_MIN_LIMIT: dict[str, float] = {
-    "kelvin": 12.0,
-    "er": 10.0,
-    "mjo": 10.0,
-    "mrg": 10.0,
-    "td": 8.0,
-}
-CASE10_CONTOUR_TARGET_STEPS: dict[str, int] = {
-    "kelvin": 6,
-    "er": 6,
-    "mjo": 7,
-    "mrg": 5,
-    "td": 5,
-}
-CASE10_FIGURE_SIZES: dict[str, tuple[float, float]] = {
-    "kelvin": (7.4, 5.15),
-    "er": (7.8, 5.2),
-    "mjo": (8.1, 5.35),
-    "mrg": (7.5, 5.0),
-    "td": (7.2, 4.95),
-}
-
-CASE03_HOV_LAT_BANDS: dict[str, tuple[float, float]] = {
-    # Lubis & Jacobi (2015) diagnose MRG time-longitude evolution from an
-    # off-equatorial base latitude near 7.5N rather than a north-minus-south
-    # projection; this avoids confusing the westward phase with the eastward
-    # group envelope in antisymmetric averages.
-    "mrg": (5.0, 10.0),
-}
-CASE03_HOV_LON_REFS: dict[str, float] = {
-    "mrg": 172.5,
-}
-
-WAVE_QUIVER_SCALES: dict[str, float] = {
-    "kelvin": 42.0,
-    "er": 45.0,
-    "mjo": 28.0,
-    "mrg": 38.0,
-    "td": 40.0,
-}
-
-ANTISYMMETRIC_WAVES: frozenset[str] = frozenset({"mrg", "eig", "eig0", "ig", "wig"})
-
-WAVE_PROPAGATION_DIRECTIONS: dict[str, str] = {
-    "kelvin": "eastward",
-    "mjo": "eastward",
-    "eig": "eastward",
-    "eig0": "eastward",
-    "ig": "eastward",
-    "er": "westward",
-    "mrg": "westward",
-    "td": "westward",
-    "wig": "westward",
-}
-
-WAVE_HOVMOLLER_WINDOWS: dict[str, int] = {
-    "kelvin": 120,
-    "er": 144,
-    "mjo": 240,
-    "mrg": 96,
-    "td": 72,
-}
+from tropical_wave_tools.stats import linear_trend
 
 
 def _case08_wave_figure_title(wave_name: str) -> str:
@@ -403,615 +179,6 @@ def _group_comparison_waves(waves: Sequence[str]) -> list[tuple[str, list[str]]]
 def _comparison_ncols(n_panels: int) -> int:
     """Choose a readable panel count for grouped atlas figures."""
     return max(1, min(3, int(n_panels)))
-
-
-def fill_missing_with_time_mean(data: xr.DataArray) -> xr.DataArray:
-    """Fill missing values with the local temporal mean, then with zero if needed."""
-    time_mean = data.mean("time", skipna=True)
-    filled = data.where(np.isfinite(data), time_mean)
-    return filled.fillna(0.0)
-
-
-def load_local_wave_fields(
-    *,
-    olr_path: PathLike = DEFAULT_LOCAL_PATHS["olr"],
-    u850_path: PathLike = DEFAULT_LOCAL_PATHS["u850"],
-    v850_path: PathLike = DEFAULT_LOCAL_PATHS["v850"],
-    time_range: tuple[str, str] | None = ("1979-01-01", "2014-12-31"),
-    lat_range: tuple[float, float] = (-20.0, 20.0),
-    lon_range: tuple[float, float] | None = None,
-) -> xr.Dataset:
-    """Load and align local OLR/U850/V850 datasets on a common grid."""
-    olr_path = _resolve_local_project_path(olr_path)
-    u850_path = _resolve_local_project_path(u850_path)
-    v850_path = _resolve_local_project_path(v850_path)
-    olr = load_dataarray(olr_path, variable="olr", time_range=time_range, lat_range=lat_range, lon_range=lon_range)
-    u850 = load_dataarray(
-        u850_path,
-        variable="uwnd",
-        time_range=time_range,
-        lat_range=lat_range,
-        lon_range=lon_range,
-    ).rename("u850")
-    v850 = load_dataarray(
-        v850_path,
-        variable="vwnd",
-        time_range=time_range,
-        lat_range=lat_range,
-        lon_range=lon_range,
-    ).rename("v850")
-
-    olr, u850, v850 = xr.align(olr, u850, v850, join="inner")
-    return xr.Dataset(
-        {
-            "olr": fill_missing_with_time_mean(olr),
-            "u850": fill_missing_with_time_mean(u850),
-            "v850": fill_missing_with_time_mean(v850),
-        }
-    )
-
-
-def compute_monthly_rms(data: xr.DataArray) -> xr.DataArray:
-    """Compute monthly root-mean-square amplitude."""
-    return np.sqrt((data**2).groupby("time.month").mean("time"))
-
-
-def compute_yearly_rms(data: xr.DataArray) -> xr.DataArray:
-    """Compute yearly root-mean-square amplitude."""
-    return np.sqrt((data**2).groupby("time.year").mean("time"))
-
-
-def compute_monthly_rms_samples(data: xr.DataArray) -> xr.DataArray:
-    """Compute monthly RMS samples on the original time axis."""
-    return np.sqrt((data**2).resample(time="MS").mean()).rename("monthly_rms")
-
-
-def _climatology_and_significance(monthly_samples: xr.DataArray) -> tuple[xr.DataArray, xr.DataArray]:
-    """Calendar-month climatology of monthly samples and a t-test of each month against the annual mean.
-
-    For every calendar month, ``p`` tests whether that month's anomaly from its own year's mean
-    differs from zero across years. Only years with all 12 months enter the annual mean, so a
-    partial first or last year cannot bias the anomalies (the climatology still uses every month).
-    """
-    climatology = monthly_samples.groupby("time.month").mean("time")
-    climatology = climatology.reindex(month=np.arange(1, 13, dtype=int))
-
-    months_per_year = monthly_samples["time"].to_series().groupby(monthly_samples["time"].dt.year.values).size()
-    complete_years = months_per_year.index[months_per_year.values == 12].to_numpy()
-    complete = monthly_samples.sel(time=np.isin(monthly_samples["time"].dt.year.values, complete_years))
-    if complete.sizes["time"] > 0:
-        annual_mean = complete.groupby("time.year").mean("time")
-        monthly_anomaly = complete.groupby("time.year") - annual_mean
-    else:
-        monthly_anomaly = complete
-
-    pvalues: list[xr.DataArray] = []
-    for month in range(1, 13):
-        samples = monthly_anomaly.where(monthly_anomaly["time"].dt.month == month, drop=True)
-        template = climatology.sel(month=month, drop=True)
-        if samples.sizes.get("time", 0) < 2:
-            pvalue = xr.full_like(template, np.nan).rename("pvalue")
-        else:
-            pvalue = one_sample_ttest(samples, dim="time")["pvalue"]
-        pvalues.append(pvalue.expand_dims(month=[month]))
-
-    return climatology, xr.concat(pvalues, dim="month")
-
-
-def compute_monthly_climatology_and_significance(data: xr.DataArray) -> tuple[xr.DataArray, xr.DataArray]:
-    """Return monthly RMS climatology and a p-value against each year's annual-mean RMS."""
-    return _climatology_and_significance(compute_monthly_rms_samples(data))
-
-
-def compute_longitude_mean_monthly_rms_climatology_and_significance(
-    data: xr.DataArray,
-) -> tuple[xr.DataArray, xr.DataArray]:
-    """Return monthly RMS climatology after averaging the monthly RMS amplitude over longitude."""
-    monthly_samples = compute_monthly_rms_samples(data)
-    if "lon" in monthly_samples.dims:
-        monthly_samples = monthly_samples.mean("lon")
-    return _climatology_and_significance(monthly_samples)
-
-
-def compute_monthly_variance_fraction_samples(
-    raw_anomaly: xr.DataArray,
-    filtered: xr.DataArray,
-    *,
-    lat_range: tuple[float, float] | None = None,
-    lon_range: tuple[float, float] | None = None,
-) -> xr.DataArray:
-    """Return monthly variance fractions (%) for one filtered wave field."""
-    raw_monthly_variance = raw_anomaly.resample(time="MS").var("time")
-    filtered_monthly_variance = filtered.resample(time="MS").var("time")
-    raw_monthly_variance, filtered_monthly_variance = xr.align(
-        raw_monthly_variance,
-        filtered_monthly_variance,
-        join="inner",
-    )
-    if {"lat", "lon"}.issubset(raw_monthly_variance.dims) and (lat_range is not None or lon_range is not None):
-        raw_monthly_variance = area_weighted_mean(
-            raw_monthly_variance,
-            lat_range=lat_range,
-            lon_range=lon_range,
-        )
-        filtered_monthly_variance = area_weighted_mean(
-            filtered_monthly_variance,
-            lat_range=lat_range,
-            lon_range=lon_range,
-        )
-    ratio = 100.0 * filtered_monthly_variance / xr.where(raw_monthly_variance > 0.0, raw_monthly_variance, np.nan)
-    ratio = ratio.rename("variance_fraction")
-    ratio.attrs["units"] = "%"
-    ratio.attrs["long_name"] = "Filtered variance fraction"
-    return ratio
-
-
-def summarize_variance_fraction_cycle(
-    variance_fraction: xr.DataArray,
-    *,
-    lat_range: tuple[float, float] = CASE05_LAT_RANGE,
-    lon_range: tuple[float, float] | None = None,
-) -> tuple[xr.DataArray, xr.DataArray]:
-    """Area-average a monthly variance-fraction field and summarize by calendar month."""
-    if {"lat", "lon"}.issubset(variance_fraction.dims):
-        regional_series = area_weighted_mean(
-            variance_fraction,
-            lat_range=lat_range,
-            lon_range=lon_range,
-        )
-    else:
-        regional_series = variance_fraction
-    monthly_mean = regional_series.groupby("time.month").mean("time")
-    monthly_std = regional_series.groupby("time.month").std("time")
-    monthly_mean.attrs["units"] = "%"
-    monthly_std.attrs["units"] = "%"
-    return monthly_mean, monthly_std
-
-
-def _lat_range(data: xr.DataArray, lower: float, upper: float) -> xr.DataArray:
-    """Select ``lower <= lat <= upper`` for ascending *or* descending latitude axes.
-
-    ``data.sel(lat=slice(lower, upper))`` silently returns an empty selection on a descending axis
-    (the usual ERA5 layout), which turned every equatorial average into NaN.
-    """
-    latitude = np.asarray(data["lat"].values)
-    if latitude.size > 1 and latitude[0] > latitude[-1]:
-        return data.sel(lat=slice(upper, lower))
-    return data.sel(lat=slice(lower, upper))
-
-
-def equatorial_mean(data: xr.DataArray, *, lat_band: tuple[float, float] = (-5.0, 5.0)) -> xr.DataArray:
-    """Compute an equatorial-band mean."""
-    return _lat_range(data, *lat_band).mean("lat")
-
-
-def is_antisymmetric_wave(wave_name: str | None) -> bool:
-    """Return whether a wave is typically diagnosed with an antisymmetric projection."""
-    if wave_name is None:
-        return False
-    return wave_name.lower() in ANTISYMMETRIC_WAVES
-
-
-def wave_longitude_projection(
-    data: xr.DataArray,
-    *,
-    wave_name: str | None = None,
-    lat_band: tuple[float, float] = (-5.0, 5.0),
-    antisymmetric_lat_band: tuple[float, float] = (-10.0, 10.0),
-) -> xr.DataArray:
-    """Project a wave onto longitude using a symmetry-aware meridional average."""
-    if "lat" not in data.dims:
-        projection = data.copy()
-        projection_name = "preprojected"
-    elif not is_antisymmetric_wave(wave_name):
-        projection = equatorial_mean(data, lat_band=lat_band)
-        projection_name = "equatorial_mean"
-    else:
-        lower, upper = antisymmetric_lat_band
-        north = _lat_range(data, 0.0, upper)
-        south = _lat_range(data, lower, 0.0)
-        north = north.where(north["lat"] > 0.0, drop=True)
-        south = south.where(south["lat"] < 0.0, drop=True)
-        if north.sizes.get("lat", 0) == 0 or south.sizes.get("lat", 0) == 0:
-            projection = equatorial_mean(data, lat_band=lat_band)
-            projection_name = "equatorial_mean_fallback"
-        else:
-            projection = north.mean("lat") - south.mean("lat")
-            projection_name = "antisymmetric_difference"
-
-    projection = projection.rename(data.name or "wave_projection")
-    projection.attrs.update(data.attrs)
-    projection.attrs["wave_projection"] = projection_name
-    if wave_name is not None:
-        projection.attrs["wave_name"] = wave_name.lower()
-    return projection
-
-
-def _case07_component_field(data: xr.DataArray, *, projection: str) -> xr.DataArray:
-    """Return a full-field equatorial component for wave-aware EOF analysis."""
-    if projection == "full" or "lat" not in data.dims:
-        component = data.copy()
-    else:
-        mirrored = data.interp(lat=(-data["lat"]).values)
-        mirrored = mirrored.assign_coords(lat=data["lat"])
-        if projection == "symmetric":
-            component = 0.5 * (data + mirrored)
-        elif projection == "antisymmetric":
-            component = 0.5 * (data - mirrored)
-        else:
-            raise ValueError("`projection` must be one of {'full', 'symmetric', 'antisymmetric'}.")
-    component = component.rename(data.name or "wave_component")
-    component.attrs.update(data.attrs)
-    component.attrs["case07_projection"] = projection
-    return component
-
-
-def _case07_latitude_weights(data: xr.DataArray) -> xr.DataArray:
-    """Return sqrt(cos(lat)) weights for latitude-aware EOF fitting."""
-    lat_values = np.asarray(data["lat"].values, dtype=float)
-    weights = np.sqrt(np.clip(np.cos(np.deg2rad(lat_values)), 1.0e-6, None))
-    return xr.DataArray(weights, dims=("lat",), coords={"lat": data["lat"]}, name="sqrt_coslat")
-
-
-def _minimum_distance_samples(reference: xr.DataArray, min_distance_days: float) -> int:
-    """Convert a minimum separation in days to samples using the time step of the series.
-
-    ``scipy.signal.find_peaks`` counts samples. Passing ``min_distance_days`` straight through
-    meant "7 samples", i.e. 7 hours for hourly data, so events a few days apart were not merged.
-    """
-    time = reference["time"]
-    if time.size > 1 and np.issubdtype(time.dtype, np.datetime64):
-        step_days = float(np.median(np.diff(time.values)) / np.timedelta64(1, "D"))
-        if step_days > 0.0:
-            return max(1, round(min_distance_days / step_days))
-    return max(1, int(min_distance_days))
-
-
-def _find_events(
-    reference: xr.DataArray,
-    *,
-    sign: str,
-    threshold_std: float,
-    min_distance_days: float,
-) -> np.ndarray:
-    """Indices of peaks of ``reference`` beyond ``threshold_std`` standard deviations."""
-    if sign not in {"negative", "positive", "absolute"}:
-        raise ValueError("`sign` must be one of {'negative', 'positive', 'absolute'}.")
-    values = np.asarray(reference.values, dtype=float)
-    if not np.isfinite(values).any():
-        warnings.warn(
-            "The reference series has no finite values (check the latitude/longitude selection); "
-            "no events were detected.",
-            RuntimeWarning,
-            stacklevel=3,
-        )
-        return np.array([], dtype=int)
-    sigma = float(np.nanstd(values))
-    if not np.isfinite(sigma) or sigma == 0.0:
-        return np.array([], dtype=int)
-
-    signal = {"negative": -values, "positive": values, "absolute": np.abs(values)}[sign]
-    peaks, _ = find_peaks(
-        signal,
-        height=threshold_std * sigma,
-        distance=_minimum_distance_samples(reference, min_distance_days),
-    )
-    return peaks.astype(int)
-
-
-def detect_wave_events(
-    filtered_olr: xr.DataArray,
-    *,
-    wave_name: str | None = None,
-    lat_band: tuple[float, float] = (-5.0, 5.0),
-    antisymmetric_lat_band: tuple[float, float] = (-10.0, 10.0),
-    lon_ref: float = 180.0,
-    sign: str = "negative",
-    threshold_std: float = 1.0,
-    min_distance_days: int = 7,
-) -> tuple[np.ndarray, xr.DataArray]:
-    """Detect strong wave events from equatorial filtered OLR at a reference longitude.
-
-    The reference is the meridional projection at the grid longitude nearest ``lon_ref``. Events
-    are peaks of ``-x`` (``sign="negative"``, convective OLR minima), ``x`` or ``|x|`` that exceed
-    ``threshold_std`` standard deviations of the whole series; of two peaks closer than
-    ``min_distance_days`` days only the larger is kept. Indices refer to the time axis of the input.
-    """
-    reference = wave_longitude_projection(
-        filtered_olr,
-        wave_name=wave_name,
-        lat_band=lat_band,
-        antisymmetric_lat_band=antisymmetric_lat_band,
-    ).sel(lon=lon_ref, method="nearest")
-    events = _find_events(
-        reference, sign=sign, threshold_std=threshold_std, min_distance_days=min_distance_days
-    )
-    return events, reference
-
-
-def detect_point_events(
-    data: xr.DataArray,
-    *,
-    base_lat: float,
-    base_lon: float,
-    sign: str = "negative",
-    threshold_std: float = 1.0,
-    min_distance_days: int = 7,
-) -> tuple[np.ndarray, xr.DataArray]:
-    """Detect strong events from a filtered point time series at a literature-style base point."""
-    reference = data.sel(lat=base_lat, lon=base_lon, method="nearest").rename(data.name or "point_reference")
-    reference.attrs.update(data.attrs)
-    reference.attrs["wave_projection"] = "base_point"
-    reference.attrs["base_lat"] = float(reference["lat"].item())
-    reference.attrs["base_lon"] = float(reference["lon"].item())
-    events = _find_events(
-        reference, sign=sign, threshold_std=threshold_std, min_distance_days=min_distance_days
-    )
-    return events, reference
-
-
-def select_hovmoller_window(
-    filtered_olr: xr.DataArray,
-    *,
-    wave_name: str | None = None,
-    lat_band: tuple[float, float] = (-5.0, 5.0),
-    antisymmetric_lat_band: tuple[float, float] = (-10.0, 10.0),
-    lon_ref: float = 180.0,
-    window_days: int = 180,
-) -> slice:
-    """Select a representative time window around the strongest equatorial event."""
-    reference = wave_longitude_projection(
-        filtered_olr,
-        wave_name=wave_name,
-        lat_band=lat_band,
-        antisymmetric_lat_band=antisymmetric_lat_band,
-    ).sel(lon=lon_ref, method="nearest")
-    values = np.asarray(reference.values, dtype=float)
-    center_index = int(np.nanargmax(np.abs(values)))
-    half_window = window_days // 2
-    start = max(0, center_index - half_window)
-    stop = min(reference.sizes["time"], start + window_days)
-    if stop - start < window_days:
-        start = max(0, stop - window_days)
-    return slice(reference.time.values[start], reference.time.values[stop - 1])
-
-
-def _hovmoller_projection(
-    data: xr.DataArray,
-    *,
-    wave_name: str | None = None,
-    lat_band: tuple[float, float] = (-5.0, 5.0),
-) -> xr.DataArray:
-    """Return the longitude projection used for Case 03 diagnostics."""
-    wave_key = wave_name.lower() if wave_name is not None else None
-    custom_lat_band = CASE03_HOV_LAT_BANDS.get(wave_key)
-    if custom_lat_band is None or "lat" not in data.dims:
-        return wave_longitude_projection(data, wave_name=wave_name, lat_band=lat_band)
-
-    projection = _lat_range(data, *custom_lat_band).mean("lat").rename(data.name or "wave_projection")
-    projection.attrs.update(data.attrs)
-    projection.attrs["wave_projection"] = "off_equatorial_mean"
-    projection.attrs["wave_name"] = wave_key
-    projection.attrs["lat_band"] = custom_lat_band
-    return projection
-
-
-def lagged_composite(
-    data: xr.DataArray,
-    event_indices: np.ndarray,
-    *,
-    lags: Sequence[int],
-) -> xr.DataArray:
-    """Composite a field at fixed lags relative to event indices.
-
-    Events whose shifted index falls outside the record are dropped *for that lag only*, so the
-    event set can shrink towards large positive or negative lags. The number of events behind each
-    lag is returned as the ``n_events`` coordinate along ``lag``.
-    """
-    composites: list[xr.DataArray] = []
-    counts: list[int] = []
-    nt = data.sizes["time"]
-    template = data.isel(time=0, drop=True) * np.nan
-    events = np.asarray(event_indices, dtype=int)
-
-    for lag in lags:
-        lag_indices = events + int(lag)
-        lag_indices = lag_indices[(lag_indices >= 0) & (lag_indices < nt)]
-        counts.append(int(lag_indices.size))
-        if lag_indices.size == 0:
-            composite = template.copy()
-        else:
-            composite = data.isel(time=lag_indices).mean("time")
-        composites.append(composite.expand_dims(lag=[int(lag)]))
-
-    result = xr.concat(composites, dim="lag")
-    return result.assign_coords(n_events=("lag", counts))
-
-
-def _case10_lat_band(base_lat: float, *, meridional_width: float = 5.0) -> tuple[float, float]:
-    """Return the 5-degree meridional averaging band used in the paper."""
-    half_width = 0.5 * float(meridional_width)
-    lower = max(-30.0, float(base_lat) - half_width)
-    upper = min(30.0, float(base_lat) + half_width)
-    return (lower, upper)
-
-
-def _case10_activity_mask(reference: xr.DataArray, *, window_days: int) -> xr.DataArray:
-    """Return a strong-activity mask following the paper's running-variance rule."""
-    reference_anom = reference - reference.mean("time")
-    rolling_variance = reference_anom.rolling(
-        time=max(int(window_days), 1),
-        center=True,
-        min_periods=max(3, int(window_days) // 2),
-    ).var()
-    threshold = float(rolling_variance.mean("time", skipna=True).item())
-    if not np.isfinite(threshold):
-        threshold = 0.0
-    active = xr.where(rolling_variance >= threshold, 1.0, np.nan)
-    active.attrs["window_days"] = int(window_days)
-    active.attrs["threshold"] = threshold
-    return active.rename("active_mask")
-
-
-def _lagged_regression_slope(
-    predictor: xr.DataArray,
-    predictand: xr.DataArray,
-    *,
-    lags: Sequence[int],
-    active_mask: xr.DataArray | None = None,
-) -> xr.DataArray:
-    """Regress a lagged predictand onto one predictor and stack slopes by lag."""
-    patterns: list[xr.DataArray] = []
-    predictor_std = predictor - predictor.mean("time")
-    predictor_scale = float(predictor_std.std("time", skipna=True).item())
-    if np.isfinite(predictor_scale) and predictor_scale > 0.0:
-        predictor_std = predictor_std / predictor_scale
-
-    for lag in lags:
-        lagged = predictand.shift(time=-int(lag))
-        x, y = xr.align(predictor_std, lagged, join="inner")
-        if active_mask is not None:
-            mask, x, y = xr.align(active_mask, x, y, join="inner")
-            x = x.where(mask.notnull())
-            y = y.where(mask.notnull())
-        slope = linear_regression(x, y, dim="time")["slope"]
-        patterns.append(slope.expand_dims(lag=[int(lag)]))
-
-    regression = xr.concat(patterns, dim="lag")
-    regression.attrs.update(predictand.attrs)
-    regression.attrs["regression_predictor"] = predictor.name or "predictor"
-    return regression
-
-
-def compute_case10_regression_hovmoller(
-    raw_olr_anomaly: xr.DataArray,
-    filtered_olr: xr.DataArray,
-    *,
-    wave_name: str,
-) -> xr.Dataset:
-    """Compute Lubis & Jacobi style lagged-regression Hovmoller diagnostics."""
-    wave_key = wave_name.lower()
-    if wave_key not in CASE10_BASE_POINTS:
-        raise ValueError(f"Case 10 is not configured for wave '{wave_name}'.")
-
-    base_lat, base_lon = CASE10_BASE_POINTS[wave_key]
-    lat_band = _case10_lat_band(base_lat)
-    lags = CASE10_LAGS[wave_key]
-    lon_min, lon_max = CASE10_LON_WINDOWS[wave_key]
-
-    filtered_reference = filtered_olr.sel(lat=base_lat, lon=base_lon, method="nearest").rename("filtered_reference")
-    active_mask = _case10_activity_mask(
-        filtered_reference,
-        window_days=CASE10_WINDOW_VARIANCE_DAYS[wave_key],
-    )
-
-    convective_proxy = (-1.0 * raw_olr_anomaly).rename("convective_proxy")
-    convective_proxy.attrs["long_name"] = "Convective proxy from negative OLR anomalies"
-    convective_proxy.attrs["units"] = raw_olr_anomaly.attrs.get("units", "W m^-2")
-
-    shading_source = _lat_range(convective_proxy, *lat_band).mean("lat")
-    contour_source = _lat_range(filtered_olr, *lat_band).mean("lat")
-
-    shading = _lagged_regression_slope(
-        filtered_reference,
-        shading_source,
-        lags=lags,
-        active_mask=active_mask,
-    ).sel(lon=slice(lon_min, lon_max))
-    contours = _lagged_regression_slope(
-        filtered_reference,
-        contour_source,
-        lags=lags,
-        active_mask=active_mask,
-    ).sel(lon=slice(lon_min, lon_max))
-
-    shading.name = "shading"
-    sigma_unit = f"{raw_olr_anomaly.attrs.get('units', 'W m^-2')} per standard deviation"
-    shading.attrs["long_name"] = "Regression of the convective proxy (-OLR anomaly) onto the base-point reference"
-    shading.attrs["predictor"] = "filtered OLR at the base point, standardised (+1 sigma = suppressed convection)"
-    shading.attrs["units"] = sigma_unit
-    shading.attrs["lag_convention"] = "positive lag: the field lags the reference"
-    shading.attrs["base_lat"] = float(filtered_reference["lat"].item())
-    shading.attrs["base_lon"] = float(filtered_reference["lon"].item())
-    shading.attrs["lat_band"] = lat_band
-    shading.attrs["window_days"] = CASE10_WINDOW_VARIANCE_DAYS[wave_key]
-    contours.name = "contours"
-    contours.attrs.update(shading.attrs)
-    contours.attrs["long_name"] = "Regression of the filtered OLR onto the base-point reference"
-
-    return xr.Dataset(
-        {
-            "shading": shading,
-            "contours": contours,
-            "reference": filtered_reference,
-            "active_mask": active_mask,
-        }
-    )
-
-
-def compute_wave_eof(
-    data: xr.DataArray,
-    *,
-    wave_name: str | None = None,
-    n_modes: int = 2,
-) -> tuple[xr.DataArray, xr.DataArray, np.ndarray, xr.DataArray]:
-    """Compute wave-aware EOFs and return the analyzed OLR field used for fitting."""
-    wave_key = wave_name.lower() if wave_name is not None else None
-    lat_range = CASE07_WAVE_LAT_RANGES.get(wave_key)
-    projection = CASE07_WAVE_PROJECTIONS.get(wave_key, "full")
-    analysis_field = data
-    if lat_range is not None and "lat" in analysis_field.dims:
-        analysis_field = _lat_range(analysis_field, *lat_range)
-    analysis_field = _case07_component_field(analysis_field, projection=projection)
-
-    eof_input = analysis_field
-    if "lat" in eof_input.dims:
-        lat_weights = _case07_latitude_weights(eof_input)
-        eof_input = eof_input * lat_weights
-    else:
-        lat_weights = None
-
-    analyzer = EOFAnalyzer(method="svd")
-    results = analyzer.fit(eof_input, n_modes=n_modes, n_harmonics=0)
-    eofs = results["eofs"]
-    if lat_weights is not None and {"mode", "lat", "lon"}.issubset(eofs.dims):
-        eofs = eofs / lat_weights
-    pcs = results["pc_scores"]
-    explained = np.asarray(results["explained_variance"], dtype=float)
-    analysis_field.attrs["case07_projection"] = projection
-    if wave_key is not None:
-        analysis_field.attrs["wave_name"] = wave_key
-    if lat_range is not None:
-        analysis_field.attrs["case07_lat_range"] = lat_range
-    return eofs, pcs, explained, analysis_field
-
-
-def regress_field_onto_pcs(
-    field: xr.DataArray,
-    pcs: xr.DataArray,
-    *,
-    standardize_pc: bool = False,
-) -> xr.DataArray:
-    """Regress one field onto each EOF principal component."""
-    time_dim = next((dim for dim in pcs.dims if dim != "mode"), None)
-    if time_dim is None:
-        raise ValueError("`pcs` must contain one non-mode dimension.")
-
-    patterns: list[xr.DataArray] = []
-    for mode in pcs["mode"].values:
-        pc = pcs.sel(mode=mode)
-        field_aligned, pc_aligned = xr.align(field, pc, join="inner")
-        pc_anom = pc_aligned - pc_aligned.mean(time_dim)
-        if standardize_pc:
-            pc_std = float(pc_anom.std(time_dim).item())
-            if np.isfinite(pc_std) and pc_std > 0.0:
-                pc_anom = pc_anom / pc_std
-        field_anom = field_aligned - field_aligned.mean("time")
-        denominator = (pc_anom**2).mean(time_dim)
-        slope = (field_anom * pc_anom).mean(time_dim) / denominator
-        patterns.append(slope.expand_dims(mode=[mode]))
-
-    return xr.concat(patterns, dim="mode")
 
 
 def _save_wk_triplet(
