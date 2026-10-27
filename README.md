@@ -1,5 +1,7 @@
 # Tropical Wave Tools
 
+**中文** | [English](README.en.md)
+
 面向热带波和气候诊断的 Python 工具包，保留原始 `wave_tools` 的科研逻辑，并整理为可测试、可发布、可展示的项目结构。
 
 更完整的使用说明见：

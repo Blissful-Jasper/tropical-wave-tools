@@ -50,6 +50,18 @@
   core functionality.
 
 ### Changed
+- **Repository layout:** `plotting.py` is now the package `plotting/` (`_style`, `_geo`, `_wind`,
+  `spectrum`, `hovmoller`, `maps`, `eof`, `climatology`) and `atlas.py` the package `atlas/` (`_config`,
+  `_paths`, `monthly`, `events`, `case10`, `wave_eof`, `workflow`). The split was generated from the AST
+  (every definition is AST-identical to the old one, apart from `_PROJECT_ROOT`, which now lives one
+  directory deeper); all old names remain importable from `tropical_wave_tools.plotting` and
+  `tropical_wave_tools.atlas`, and representative figures render pixel-identically.
+- `preprocess.py` was merged into `preprocessing.py`; `tropical_wave_tools.preprocess` remains as a
+  deprecated alias that emits a `DeprecationWarning`.
+- Documentation PNGs were recompressed losslessly (15.4 MB -> 10.7 MB, identical pixels) with the new
+  `scripts/optimize_assets.py`. The repository history still contains the old files.
+- Build requirement raised to `setuptools>=77`: `license = "MIT"` / `license-files` (PEP 639) need it,
+  while `>=61` was declared. CI now builds the wheel and checks that the new subpackages are inside.
 - **Phase-speed estimator:** `composite_kw_phase` now estimates `Cp_ave` by following the single
   strongest crest of the lag-longitude composite from `lon_ref` (`speed_method="ridge"`, new
   `ridge_window_deg`), instead of one straight line through every point above the threshold. The
@@ -79,6 +91,7 @@
   matrix with coverage, and a documentation build on every pull request.
 
 ### Added
+- `README.en.md` (English README) linked from the Chinese README.
 - Case 10 outputs (`shading`, `contours`) now carry `long_name`, `predictor`, `units` ("per standard
   deviation") and `lag_convention` attributes. The predictor is the *filtered OLR* at the base point
   (+1 sigma = suppressed convection) while the shading is the convective proxy (-OLR), so the shading
