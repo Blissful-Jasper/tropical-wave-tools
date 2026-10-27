@@ -29,12 +29,16 @@ if (num(ismissing(VAR)) .gt. 0) then
   exit
 end if
 
-system("mkdir -p validation/wk_out")
+system("mkdir -p validation/wk_out validation/wk_ref")
 
 do i = 0, dimsizes(cases) - 1
   opt          = True
   opt@debug    = True
   opt@pltType  = "png"
   opt@cnLinesOn = False
+  ; save the spectra for the Python comparison; wk_out/ is gitignored, wk_ref/ is not
+  opt@netCDF    = True
+  opt@dirNetCDF = "validation/wk_ref/"
+  opt@filNetCDF = cases(i) + "_" + var + ".nc"
   wkSpaceTime(VAR, "validation/wk_out/", cases(i), var, latN, spd, 96, skips(i), opt)
 end do
