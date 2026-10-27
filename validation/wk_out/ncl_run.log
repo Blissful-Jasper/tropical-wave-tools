@@ -1,0 +1,708 @@
+ Copyright (C) 1995-2019 - All Rights Reserved
+ University Corporation for Atmospheric Research
+ NCAR Command Language Version 6.6.2
+ The use of this software is governed by a License Agreement.
+ See http://www.ncl.ucar.edu/ for more details.
+
+Variable: VAR
+Type: float
+Total Size: 1437696 bytes
+            359424 values
+Number of Dimensions: 3
+Dimensions and sizes:	[time | 384] x [lat | 13] x [lon | 72]
+Coordinates: 
+            time: [0..383]
+            lat: [ -15..  15]
+            lon: [   0.. 355]
+Number Of Attributes: 1
+  _FillValue :	nan
+(0)	 
+
+Variable: x (parameter)
+Type: float
+Total Size: 1437696 bytes
+            359424 values
+Number of Dimensions: 3
+Dimensions and sizes:	[time | 384] x [lat | 13] x [lon | 72]
+Coordinates: 
+            time: [0..383]
+            lat: [ -15..  15]
+            lon: [   0.. 355]
+Number Of Attributes: 0
+(0)	 
+(0)	min=200.463   max=282.743
+(0)	===> Post removal of trend and signal <===
+
+Variable: x (parameter)
+Type: float
+Total Size: 1437696 bytes
+            359424 values
+Number of Dimensions: 3
+Dimensions and sizes:	[time | 384] x [lat | 13] x [lon | 72]
+Coordinates: 
+            time: [0..383]
+            lat: [ -15..  15]
+            lon: [   0.. 355]
+Number Of Attributes: 0
+(0)	 
+(0)	min=201.529   max=282.452
+
+Variable: xAS
+Type: float
+Total Size: 1437696 bytes
+            359424 values
+Number of Dimensions: 3
+Dimensions and sizes:	[lat | 13] x [lon | 72] x [time | 384]
+Coordinates: 
+            lat: [ -15..  15]
+            lon: [   0.. 355]
+            time: [0..383]
+Number Of Attributes: 1
+  long_name :	antisymmetric & symmetric (separate hemispheres)
+(0)	 
+(0)	antisymmetric & symmetric (separate hemispheres) : min=-28.0087   max=281.129
+(0)	==============> nl=0 <==============
+(0)	nw=0  ntStrt=0   ntLast=95
+(0)	nw=1  ntStrt=126   ntLast=221
+(0)	nw=2  ntStrt=252   ntLast=347
+(0)	==============> nl=1 <==============
+(0)	==============> nl=2 <==============
+(0)	==============> nl=3 <==============
+(0)	==============> nl=4 <==============
+(0)	==============> nl=5 <==============
+(0)	==============> nl=6 <==============
+(0)	==============> nl=7 <==============
+(0)	==============> nl=8 <==============
+(0)	==============> nl=9 <==============
+(0)	==============> nl=10 <==============
+(0)	==============> nl=11 <==============
+(0)	==============> nl=12 <==============
+
+Variable: peeAS
+Type: float
+Total Size: 368212 bytes
+            92053 values
+Number of Dimensions: 3
+Dimensions and sizes:	[lat | 13] x [wave | 73] x [freq | 97]
+Coordinates: 
+            lat: [ -15..  15]
+            wave: [-36..36]
+            freq: [-0.5..0.5]
+Number Of Attributes: 1
+  long_name :	symmetric and asymmetric components
+(0)	 
+(0)	symmetric and asymmetric components : min=6.41054e-06   max=22.776
+
+Variable: psumanti
+Type: float
+Total Size: 28324 bytes
+            7081 values
+Number of Dimensions: 2
+Dimensions and sizes:	[wave | 73] x [freq | 97]
+Coordinates: 
+            wave: [-36..36]
+            freq: [-0.5..0.5]
+Number Of Attributes: 3
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+  long_name :	symmetric and asymmetric components
+  _FillValue :	1e+20
+(0)	 
+(0)	symmetric and asymmetric components : min=0.0174902   max=135.059
+
+Variable: psumanti
+Type: float
+Total Size: 28324 bytes
+            7081 values
+Number of Dimensions: 2
+Dimensions and sizes:	[wave | 73] x [freq | 97]
+Coordinates: 
+            wave: [-36..36]
+            freq: [-0.5..0.5]
+Number Of Attributes: 4
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+  long_name :	log10(Asymmetric)
+  wave :	27
+  _FillValue :	1e+20
+(0)	 
+(0)	log10(Asymmetric) : min=-1.92857   max=1.39425
+
+Variable: psumsym
+Type: float
+Total Size: 28324 bytes
+            7081 values
+Number of Dimensions: 2
+Dimensions and sizes:	[wave | 73] x [freq | 97]
+Coordinates: 
+            wave: [-36..36]
+            freq: [-0.5..0.5]
+Number Of Attributes: 4
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+  long_name :	log10(Symmetric)
+  wave :	27
+  _FillValue :	1e+20
+(0)	 
+(0)	log10(Symmetric) : min=-1.75721   max=2.13052
+
+Variable: frqfftwin
+Type: float
+Total Size: 388 bytes
+            97 values
+Number of Dimensions: 1
+Dimensions and sizes:	[freq | 97]
+Coordinates: 
+            freq: [-0.5..0.5]
+(0)	 
+(0)	min=-0.5   max=0.5
+
+Variable: wavep1
+Type: integer
+Total Size: 292 bytes
+            73 values
+Number of Dimensions: 1
+Dimensions and sizes:	[wave | 73]
+Coordinates: 
+            wave: [-36..36]
+(0)	 
+(0)	min=-36   max=36
+
+Variable: asym
+Type: float
+Total Size: 6076 bytes
+            1519 values
+Number of Dimensions: 2
+Dimensions and sizes:	[freq | 49] x [wave | 31]
+Coordinates: 
+            freq: [ 0..0.5]
+            wave: [-15..15]
+Number Of Attributes: 4
+  _FillValue :	1e+20
+  wave :	27
+  long_name :	Fig_1: log10(Asymmetric)
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+(0)	 
+(0)	Fig_1: log10(Asymmetric) : min=-1.67756   max=1.11889
+
+Variable: sym
+Type: float
+Total Size: 6076 bytes
+            1519 values
+Number of Dimensions: 2
+Dimensions and sizes:	[freq | 49] x [wave | 31]
+Coordinates: 
+            freq: [ 0..0.5]
+            wave: [-15..15]
+Number Of Attributes: 4
+  _FillValue :	1e+20
+  wave :	27
+  long_name :	Fig_1: log10(Symmetric)
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+(0)	 
+(0)	Fig_1: log10(Symmetric) : min=-1.55893   max=1.83099
+
+Variable: psumb
+Type: float
+Total Size: 28324 bytes
+            7081 values
+Number of Dimensions: 2
+Dimensions and sizes:	[wave | 73] x [freq | 97]
+Coordinates: 
+            wave: [-36..36]
+            freq: [-0.5..0.5]
+Number Of Attributes: 3
+  _FillValue :	1e+20
+  long_name :	Background Spectrum
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+(0)	 
+(0)	Background Spectrum : min=0.0167606   max=67.5577
+(0)	 ===> Post multiple smoothing by wk_smooth121 <===
+
+Variable: psumb_nolog
+Type: float
+Total Size: 28324 bytes
+            7081 values
+Number of Dimensions: 2
+Dimensions and sizes:	[wave | 73] x [freq | 97]
+Coordinates: 
+            wave: [-36..36]
+            freq: [-0.5..0.5]
+Number Of Attributes: 5
+  _FillValue :	1e+20
+  wave :	27
+  freq :	0.5
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+  long_name :	Background Spectrum
+(0)	 
+(0)	Background Spectrum : min=0.0167606   max=67.5577
+
+Variable: psumb
+Type: float
+Total Size: 28324 bytes
+            7081 values
+Number of Dimensions: 2
+Dimensions and sizes:	[wave | 73] x [freq | 97]
+Coordinates: 
+            wave: [-36..36]
+            freq: [-0.5..0.5]
+Number Of Attributes: 5
+  long_name :	log10( background spec )
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+  freq :	0.5
+  wave :	27
+  _FillValue :	1e+20
+(0)	 
+(0)	log10( background spec ) : min=-1.77571   max=1.82967
+
+Variable: spec
+Type: float
+Total Size: 6076 bytes
+            1519 values
+Number of Dimensions: 2
+Dimensions and sizes:	[freq | 49] x [wave | 31]
+Coordinates: 
+            freq: [ 0..0.5]
+            wave: [-15..15]
+Number Of Attributes: 5
+  _FillValue :	1e+20
+  wave :	27
+  freq :	0.5
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+  long_name :	log10( background spec )
+(0)	 
+(0)	log10( background spec ) : min=-1.34847   max=0.339599
+
+Variable: psumanti_nolog
+Type: float
+Total Size: 28324 bytes
+            7081 values
+Number of Dimensions: 2
+Dimensions and sizes:	[wave | 73] x [freq | 97]
+Coordinates: 
+            wave: [-36..36]
+            freq: [-0.5..0.5]
+Number Of Attributes: 4
+  _FillValue :	1e+20
+  wave :	27
+  long_name :	symmetric and asymmetric components
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+(0)	 
+(0)	symmetric and asymmetric components : min=0.000841552   max=27.072
+
+Variable: psumsym_nolog
+Type: float
+Total Size: 28324 bytes
+            7081 values
+Number of Dimensions: 2
+Dimensions and sizes:	[wave | 73] x [freq | 97]
+Coordinates: 
+            wave: [-36..36]
+            freq: [-0.5..0.5]
+Number Of Attributes: 4
+  _FillValue :	1e+20
+  wave :	27
+  long_name :	symmetric and asymmetric components
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+(0)	 
+(0)	symmetric and asymmetric components : min=0.00510486   max=31.0021
+
+Variable: asym
+Type: float
+Total Size: 6076 bytes
+            1519 values
+Number of Dimensions: 2
+Dimensions and sizes:	[freq | 49] x [wave | 31]
+Coordinates: 
+            freq: [ 0..0.5]
+            wave: [-15..15]
+Number Of Attributes: 4
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+  long_name :	symmetric and asymmetric components
+  wave :	27
+  _FillValue :	1e+20
+(0)	 
+(0)	symmetric and asymmetric components : min=0.0253341   max=27.072
+
+Variable: sym
+Type: float
+Total Size: 6076 bytes
+            1519 values
+Number of Dimensions: 2
+Dimensions and sizes:	[freq | 49] x [wave | 31]
+Coordinates: 
+            freq: [ 0..0.5]
+            wave: [-15..15]
+Number Of Attributes: 4
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+  long_name :	symmetric and asymmetric components
+  wave :	27
+  _FillValue :	1e+20
+(0)	 
+(0)	symmetric and asymmetric components : min=0.0312578   max=31.0021
+(0)	 
+(0)	   ===> Statistics: Fig_3a <===
+(0)	        Mean=0.789943
+(0)	      StdDev=0.915007
+(0)	         Min=0.0253341
+(0)	 lowQuartile=0.676637
+(0)	      Median=0.81413
+(0)	highQuartile=0.923286
+(0)	         Max=27.072
+(0)	 
+(0)	 
+(0)	   ===> Statistics: Fig_3b <===
+(0)	        Mean=1.05309
+(0)	      StdDev=1.04365
+(0)	         Min=0.0312578
+(0)	 lowQuartile=0.907976
+(0)	      Median=1.07608
+(0)	highQuartile=1.2151
+(0)	         Max=31.0021
+(0)	 
+(0)	********** FINISHED: Space-Time *****************
+(0)	 
+
+Variable: x (parameter)
+Type: float
+Total Size: 1437696 bytes
+            359424 values
+Number of Dimensions: 3
+Dimensions and sizes:	[time | 384] x [lat | 13] x [lon | 72]
+Coordinates: 
+            time: [0..383]
+            lat: [ -15..  15]
+            lon: [   0.. 355]
+Number Of Attributes: 0
+(0)	 
+(0)	min=201.529   max=282.452
+(0)	===> Post removal of trend and signal <===
+
+Variable: x (parameter)
+Type: float
+Total Size: 1437696 bytes
+            359424 values
+Number of Dimensions: 3
+Dimensions and sizes:	[time | 384] x [lat | 13] x [lon | 72]
+Coordinates: 
+            time: [0..383]
+            lat: [ -15..  15]
+            lon: [   0.. 355]
+Number Of Attributes: 0
+(0)	 
+(0)	min=201.53   max=282.488
+
+Variable: xAS
+Type: float
+Total Size: 1437696 bytes
+            359424 values
+Number of Dimensions: 3
+Dimensions and sizes:	[lat | 13] x [lon | 72] x [time | 384]
+Coordinates: 
+            lat: [ -15..  15]
+            lon: [   0.. 355]
+            time: [0..383]
+Number Of Attributes: 1
+  long_name :	antisymmetric & symmetric (separate hemispheres)
+(0)	 
+(0)	antisymmetric & symmetric (separate hemispheres) : min=-28.0127   max=281.129
+(0)	==============> nl=0 <==============
+(0)	nw=0  ntStrt=0   ntLast=95
+(0)	nw=1  ntStrt=36   ntLast=131
+(0)	nw=2  ntStrt=72   ntLast=167
+(0)	nw=3  ntStrt=108   ntLast=203
+(0)	nw=4  ntStrt=144   ntLast=239
+(0)	nw=5  ntStrt=180   ntLast=275
+(0)	nw=6  ntStrt=216   ntLast=311
+(0)	nw=7  ntStrt=252   ntLast=347
+(0)	nw=8  ntStrt=288   ntLast=383
+(0)	==============> nl=1 <==============
+(0)	==============> nl=2 <==============
+(0)	==============> nl=3 <==============
+(0)	==============> nl=4 <==============
+(0)	==============> nl=5 <==============
+(0)	==============> nl=6 <==============
+(0)	==============> nl=7 <==============
+(0)	==============> nl=8 <==============
+(0)	==============> nl=9 <==============
+(0)	==============> nl=10 <==============
+(0)	==============> nl=11 <==============
+(0)	==============> nl=12 <==============
+
+Variable: peeAS
+Type: float
+Total Size: 368212 bytes
+            92053 values
+Number of Dimensions: 3
+Dimensions and sizes:	[lat | 13] x [wave | 73] x [freq | 97]
+Coordinates: 
+            lat: [ -15..  15]
+            wave: [-36..36]
+            freq: [-0.5..0.5]
+Number Of Attributes: 1
+  long_name :	symmetric and asymmetric components
+(0)	 
+(0)	symmetric and asymmetric components : min=3.99676e-05   max=22.6911
+
+Variable: psumanti
+Type: float
+Total Size: 28324 bytes
+            7081 values
+Number of Dimensions: 2
+Dimensions and sizes:	[wave | 73] x [freq | 97]
+Coordinates: 
+            wave: [-36..36]
+            freq: [-0.5..0.5]
+Number Of Attributes: 3
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+  long_name :	symmetric and asymmetric components
+  _FillValue :	1e+20
+(0)	 
+(0)	symmetric and asymmetric components : min=0.0187562   max=134.571
+
+Variable: psumanti
+Type: float
+Total Size: 28324 bytes
+            7081 values
+Number of Dimensions: 2
+Dimensions and sizes:	[wave | 73] x [freq | 97]
+Coordinates: 
+            wave: [-36..36]
+            freq: [-0.5..0.5]
+Number Of Attributes: 4
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+  long_name :	log10(Asymmetric)
+  wave :	27
+  _FillValue :	1e+20
+(0)	 
+(0)	log10(Asymmetric) : min=-1.86409   max=1.39931
+
+Variable: psumsym
+Type: float
+Total Size: 28324 bytes
+            7081 values
+Number of Dimensions: 2
+Dimensions and sizes:	[wave | 73] x [freq | 97]
+Coordinates: 
+            wave: [-36..36]
+            freq: [-0.5..0.5]
+Number Of Attributes: 4
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+  long_name :	log10(Symmetric)
+  wave :	27
+  _FillValue :	1e+20
+(0)	 
+(0)	log10(Symmetric) : min=-1.72686   max=2.12895
+
+Variable: frqfftwin
+Type: float
+Total Size: 388 bytes
+            97 values
+Number of Dimensions: 1
+Dimensions and sizes:	[freq | 97]
+Coordinates: 
+            freq: [-0.5..0.5]
+(0)	 
+(0)	min=-0.5   max=0.5
+
+Variable: wavep1
+Type: integer
+Total Size: 292 bytes
+            73 values
+Number of Dimensions: 1
+Dimensions and sizes:	[wave | 73]
+Coordinates: 
+            wave: [-36..36]
+(0)	 
+(0)	min=-36   max=36
+
+Variable: asym
+Type: float
+Total Size: 6076 bytes
+            1519 values
+Number of Dimensions: 2
+Dimensions and sizes:	[freq | 49] x [wave | 31]
+Coordinates: 
+            freq: [ 0..0.5]
+            wave: [-15..15]
+Number Of Attributes: 4
+  _FillValue :	1e+20
+  wave :	27
+  long_name :	Fig_1: log10(Asymmetric)
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+(0)	 
+(0)	Fig_1: log10(Asymmetric) : min=-1.65253   max=1.12278
+
+Variable: sym
+Type: float
+Total Size: 6076 bytes
+            1519 values
+Number of Dimensions: 2
+Dimensions and sizes:	[freq | 49] x [wave | 31]
+Coordinates: 
+            freq: [ 0..0.5]
+            wave: [-15..15]
+Number Of Attributes: 4
+  _FillValue :	1e+20
+  wave :	27
+  long_name :	Fig_1: log10(Symmetric)
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+(0)	 
+(0)	Fig_1: log10(Symmetric) : min=-1.56683   max=1.82938
+
+Variable: psumb
+Type: float
+Total Size: 28324 bytes
+            7081 values
+Number of Dimensions: 2
+Dimensions and sizes:	[wave | 73] x [freq | 97]
+Coordinates: 
+            wave: [-36..36]
+            freq: [-0.5..0.5]
+Number Of Attributes: 3
+  _FillValue :	1e+20
+  long_name :	Background Spectrum
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+(0)	 
+(0)	Background Spectrum : min=0.0210948   max=67.3098
+(0)	 ===> Post multiple smoothing by wk_smooth121 <===
+
+Variable: psumb_nolog
+Type: float
+Total Size: 28324 bytes
+            7081 values
+Number of Dimensions: 2
+Dimensions and sizes:	[wave | 73] x [freq | 97]
+Coordinates: 
+            wave: [-36..36]
+            freq: [-0.5..0.5]
+Number Of Attributes: 5
+  _FillValue :	1e+20
+  wave :	27
+  freq :	0.5
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+  long_name :	Background Spectrum
+(0)	 
+(0)	Background Spectrum : min=0.0210948   max=67.3098
+
+Variable: psumb
+Type: float
+Total Size: 28324 bytes
+            7081 values
+Number of Dimensions: 2
+Dimensions and sizes:	[wave | 73] x [freq | 97]
+Coordinates: 
+            wave: [-36..36]
+            freq: [-0.5..0.5]
+Number Of Attributes: 5
+  long_name :	log10( background spec )
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+  freq :	0.5
+  wave :	27
+  _FillValue :	1e+20
+(0)	 
+(0)	log10( background spec ) : min=-1.67583   max=1.82808
+
+Variable: spec
+Type: float
+Total Size: 6076 bytes
+            1519 values
+Number of Dimensions: 2
+Dimensions and sizes:	[freq | 49] x [wave | 31]
+Coordinates: 
+            freq: [ 0..0.5]
+            wave: [-15..15]
+Number Of Attributes: 5
+  _FillValue :	1e+20
+  wave :	27
+  freq :	0.5
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+  long_name :	log10( background spec )
+(0)	 
+(0)	log10( background spec ) : min=-1.34457   max=0.33777
+
+Variable: psumanti_nolog
+Type: float
+Total Size: 28324 bytes
+            7081 values
+Number of Dimensions: 2
+Dimensions and sizes:	[wave | 73] x [freq | 97]
+Coordinates: 
+            wave: [-36..36]
+            freq: [-0.5..0.5]
+Number Of Attributes: 4
+  _FillValue :	1e+20
+  wave :	27
+  long_name :	symmetric and asymmetric components
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+(0)	 
+(0)	symmetric and asymmetric components : min=0.000724147   max=27.1823
+
+Variable: psumsym_nolog
+Type: float
+Total Size: 28324 bytes
+            7081 values
+Number of Dimensions: 2
+Dimensions and sizes:	[wave | 73] x [freq | 97]
+Coordinates: 
+            wave: [-36..36]
+            freq: [-0.5..0.5]
+Number Of Attributes: 4
+  _FillValue :	1e+20
+  wave :	27
+  long_name :	symmetric and asymmetric components
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+(0)	 
+(0)	symmetric and asymmetric components : min=0.00443144   max=31.0174
+
+Variable: asym
+Type: float
+Total Size: 6076 bytes
+            1519 values
+Number of Dimensions: 2
+Dimensions and sizes:	[freq | 49] x [wave | 31]
+Coordinates: 
+            freq: [ 0..0.5]
+            wave: [-15..15]
+Number Of Attributes: 4
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+  long_name :	symmetric and asymmetric components
+  wave :	27
+  _FillValue :	1e+20
+(0)	 
+(0)	symmetric and asymmetric components : min=0.024106   max=27.1823
+
+Variable: sym
+Type: float
+Total Size: 6076 bytes
+            1519 values
+Number of Dimensions: 2
+Dimensions and sizes:	[freq | 49] x [wave | 31]
+Coordinates: 
+            freq: [ 0..0.5]
+            wave: [-15..15]
+Number Of Attributes: 4
+  sum_op_ncl :	dim_sum_n over dimension(s): lat
+  long_name :	symmetric and asymmetric components
+  wave :	27
+  _FillValue :	1e+20
+(0)	 
+(0)	symmetric and asymmetric components : min=0.0288413   max=31.0174
+(0)	 
+(0)	   ===> Statistics: Fig_3a <===
+(0)	        Mean=0.785771
+(0)	      StdDev=0.914641
+(0)	         Min=0.024106
+(0)	 lowQuartile=0.694343
+(0)	      Median=0.817422
+(0)	highQuartile=0.901551
+(0)	         Max=27.1823
+(0)	 
+(0)	 
+(0)	   ===> Statistics: Fig_3b <===
+(0)	        Mean=1.05872
+(0)	      StdDev=1.04106
+(0)	         Min=0.0288413
+(0)	 lowQuartile=0.945186
+(0)	      Median=1.09125
+(0)	highQuartile=1.2101
+(0)	         Max=31.0174
+(0)	 
+(0)	********** FINISHED: Space-Time *****************
