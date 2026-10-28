@@ -76,7 +76,11 @@ def compute_spatial_metrics(
     legacy_std: xr.DataArray,
     cckw_std: xr.DataArray,
 ) -> dict[str, float]:
-    """Compute summary statistics for legacy-vs-CCKW comparisons."""
+    """Compute summary statistics for legacy-vs-CCKW comparisons.
+
+    Every statistic, including the two means, uses the grid points that are valid in both fields, so
+    ``mean_bias`` equals the difference of the reported means even when the fields have different gaps.
+    """
     diff = legacy_std - cckw_std
     legacy_values = legacy_std.values.ravel()
     cckw_values = cckw_std.values.ravel()
@@ -94,8 +98,8 @@ def compute_spatial_metrics(
         }
 
     return {
-        "legacy_mean_std": float(legacy_std.mean().item()),
-        "cckw_mean_std": float(cckw_std.mean().item()),
+        "legacy_mean_std": float(legacy_values[valid].mean()),
+        "cckw_mean_std": float(cckw_values[valid].mean()),
         "mean_bias": float(diff_values[valid].mean()),
         "mean_abs_diff": float(abs(diff_values[valid]).mean()),
         "rmse": float((diff_values[valid] ** 2).mean() ** 0.5),
@@ -117,7 +121,14 @@ def compare_filter_spatial_fields(
     use_parallel: bool = True,
     output_dir: str | Path | None = None,
 ) -> pd.DataFrame:
-    """Run legacy and CCKW filters on the same dataset and compare their spatial STD."""
+    """Run legacy and CCKW filters on the same dataset and compare their spatial STD.
+
+    Note that both filters share one implementation (the NCL-style ``WaveFilter._kf_filter`` and the same
+    seasonal-cycle removal), so for resolvable waves this comparison reports identical fields (RMSE 0,
+    correlation 1). It differs only where ``CCKWFilter`` returns zeros for a band the sampling cannot
+    resolve (e.g. ``eig``/``wig``/``ig`` with daily data). To validate the filter itself, compare with
+    an independent implementation such as NCL ``kf_filter`` (see ``validation/``).
+    """
     data = load_dataarray(
         input_path,
         variable=variable,

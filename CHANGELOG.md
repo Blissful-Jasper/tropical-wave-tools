@@ -3,6 +3,28 @@
 ## Unreleased
 
 ### Fixed
+- `io.normalize_longitude` (and so `standardize_data`) left a duplicated column when the file stored a
+  cyclic point (0 and 360, or -180 and 180): after wrapping, longitude 0 appeared twice, which defeats
+  the cyclic-point detection in `_kf_filter`. Duplicated longitudes are now dropped. A longitude of
+  `-1e-14` also wrapped to exactly `360.0` (`-1e-14 % 360`); it now maps to `0.0`.
+- `valid_range` was compared with the *packed* values converted to physical units, but CF defines it in
+  packed units. For packed data (`scale_factor` / `add_offset`) the bounds are now converted before
+  masking (a test file kept all 120 points instead of the 27 inside the range).
+- `io.infer_variable_name` returned `crs` (or another scalar/auxiliary variable) when it came first; it
+  now picks the non-bounds variable that covers the most of time / lat / lon.
+- Saving attributes the netCDF format cannot hold (`None`, tuples containing `None` such as an unset
+  equivalent depth, booleans, dictionaries) raised `TypeError`; this also broke
+  `filter-wave --method legacy` for TD and MJO. Attributes are sanitized: `None` is dropped, booleans
+  become 0/1, dictionaries become JSON, tuples with `None` become float arrays with NaN.
+- `stats.linear_trend` and the minimum event separation of `detect_wave_events` crashed on non-standard
+  calendars (`noleap`, `360_day`, i.e. cftime time axes from CMIP models). New helpers
+  `io.time_axis_in_days` / `io.time_deltas_in_days` handle datetime64 and cftime axes alike.
+- `workflows.compute_spatial_metrics` averaged each field over its own valid points, so with missing
+  data `mean_bias` was not the difference of the two reported means. Both now use the jointly valid
+  points.
+- `CCKWFilter` silently returned all zeros for a wave band that cannot be resolved at the sampling
+  rate (EIG, WIG, IG with daily data). It now emits a `RuntimeWarning` and records a `note` attribute;
+  `method="legacy"` clips such a band at the Nyquist frequency instead.
 - `atlas.regress_field_onto_pcs` took the PC mean over all times but the field mean over the times the
   field exists, so missing days biased the slope (0.5% with 23% missing days, more with clustered gaps).
   It now uses the days valid in both (same fix as `stats.linear_regression`).
@@ -103,6 +125,14 @@
   matrix with coverage, and a documentation build on every pull request.
 
 ### Added
+- `prepare-sample-data --output PATH`: the command could only overwrite the packaged sample file.
+- Checks for `io`, `workflows` and the command-line entry points (`tests/test_io_and_workflows.py`):
+  cyclic longitudes (and filtering a grid that stores one), packed `valid_range`, variable inference,
+  attribute round trips, noleap / 360_day calendars, selection on descending latitude and wrapping
+  longitude ranges, spatial metrics against numpy, the WK workflow against a direct call, the
+  unresolvable-band warning, and each CLI subcommand end to end.
+- `compare_filter_spatial_fields` documents that `legacy` and `cckw` share one implementation, so
+  RMSE 0 / correlation 1 is not an independent check (see `docs/validation.md` for the NCL comparison).
 - `calculate_cross_spectrum(..., dof_per_segment=2.667)` (also in `compute_cross_spectrum_for_experiments`
   and `analyze_cross_spectrum`): the degrees of freedom behind the coherence significance were a fixed
   `2.667 * nseg`. With 96-day segments overlapping by 65 days and independent noise, the nominal 5%

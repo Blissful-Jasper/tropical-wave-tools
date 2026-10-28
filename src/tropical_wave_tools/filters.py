@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -352,6 +353,12 @@ class CCKWFilter:
             self.filter_note = (
                 f"Wave {self.wave_name} is not resolvable for samples_per_day={self.spd}; "
                 "returned zeros to avoid Nyquist-edge artefacts."
+            )
+            warnings.warn(
+                f"{self.filter_note} Use method='legacy' for the band clipped at the Nyquist frequency "
+                "(as NCL kf_filter does) or data with a shorter sampling interval.",
+                RuntimeWarning,
+                stacklevel=3,
             )
         return self.anomaly
 

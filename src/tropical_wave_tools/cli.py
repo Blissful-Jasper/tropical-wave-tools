@@ -53,6 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
     sample_parser.add_argument("--lat-min", type=float, default=-15.0, help="Minimum latitude.")
     sample_parser.add_argument("--lat-max", type=float, default=15.0, help="Maximum latitude.")
     sample_parser.add_argument(
+        "--output",
+        default=None,
+        help="Where to write the subset. Default: the packaged sample inside the package "
+        "(src/tropical_wave_tools/data/olr_equatorial_1979.nc), which is overwritten.",
+    )
+    sample_parser.add_argument(
         "--copy-full-data",
         action="store_true",
         help="Also copy the full source file into data/local/.",
@@ -152,7 +158,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--demo-years requires both --time-start and --time-end.")
 
     if args.command == "prepare-sample-data":
-        sample_target = get_sample_path()
+        sample_target = Path(args.output) if args.output else get_sample_path()
         create_demo_subset(
             args.source,
             sample_target,
@@ -160,7 +166,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             time_range=(args.time_start, args.time_end),
             lat_range=(args.lat_min, args.lat_max),
         )
-        print(f"Created packaged sample: {sample_target}")
+        print(f"Created sample subset: {sample_target}")
         if args.copy_full_data:
             copied_path = install_local_data_copy(args.source, project_root / "data" / "local")
             print(f"Copied full local file: {copied_path}")

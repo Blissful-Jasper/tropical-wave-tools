@@ -6,7 +6,7 @@ import numpy as np
 import xarray as xr
 from scipy import stats as scipy_stats
 
-from tropical_wave_tools.io import rename_standard_coordinates, to_dataarray
+from tropical_wave_tools.io import rename_standard_coordinates, time_axis_in_days, to_dataarray
 
 
 def _prepare_array(data: xr.DataArray, *, dim: str = "time") -> xr.DataArray:
@@ -28,9 +28,9 @@ def standard_deviation(data: xr.DataArray, *, dim: str = "time", ddof: int = 0) 
 
 def _time_axis_in_days(data: xr.DataArray, dim: str) -> xr.DataArray:
     coordinate = data[dim]
-    if np.issubdtype(coordinate.dtype, np.datetime64):
-        delta_days = (coordinate - coordinate.isel({dim: 0})) / np.timedelta64(1, "D")
-        return xr.DataArray(delta_days.astype("float64"), dims=(dim,), coords={dim: coordinate})
+    is_time = np.issubdtype(coordinate.dtype, np.datetime64) or coordinate.dtype == object
+    if is_time:  # datetime64 and cftime calendars (noleap, 360_day, ...)
+        return xr.DataArray(time_axis_in_days(coordinate), dims=(dim,), coords={dim: coordinate})
     return coordinate.astype("float64")
 
 
@@ -101,7 +101,7 @@ def linear_trend(
     rvalue = rvalue.rename("rvalue")
     pvalue = pvalue.rename("pvalue")
     stderr = stderr.rename("stderr")
-    rate_unit = "day" if np.issubdtype(coordinate.dtype, np.datetime64) else dim
+    rate_unit = "day" if (np.issubdtype(coordinate.dtype, np.datetime64) or coordinate.dtype == object) else dim
     slope.attrs["units"] = f"{array.attrs.get('units', 'unknown')} / {rate_unit}"
     stderr.attrs["units"] = slope.attrs["units"]
     pvalue.attrs["long_name"] = "two-sided p-value for slope"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Union
@@ -54,17 +55,28 @@ def rename_standard_coordinates(data: XarrayLike) -> XarrayLike:
 
 
 def infer_variable_name(dataset: xr.Dataset) -> str:
-    """Infer the main scientific variable from a dataset."""
+    """Infer the main scientific variable from a dataset.
+
+    Bounds variables are skipped and the variable spanning the most of ``time``/``lat``/``lon`` wins;
+    ties go to the first one. (Taking simply the first variable returned scalars such as ``crs``.)
+    """
+    excluded = {"info", "nmiss", "time_bnds", "time_bounds", "lat_bnds", "lon_bnds"}
     candidates = [
         name
         for name in dataset.data_vars
-        if name.lower() not in {"info", "nmiss", "time_bnds", "time_bounds", "lat_bnds", "lon_bnds"}
+        if name.lower() not in excluded
         and not name.lower().endswith("_bnds")
         and not name.lower().endswith("_bounds")
     ]
     if not candidates:
         raise InvalidDataArrayError("No scientific data variable could be inferred from the dataset.")
-    return candidates[0]
+
+    standardized = rename_standard_coordinates(dataset)
+
+    def coverage(name: str) -> int:
+        return sum(dim in standardized[name].dims for dim in ("time", "lat", "lon"))
+
+    return max(candidates, key=coverage)  # max() keeps the first of equal scores
 
 
 def squeeze_singleton_extra_dims(data: xr.DataArray) -> xr.DataArray:
@@ -105,6 +117,12 @@ def _mask_out_of_valid_range(data: xr.DataArray) -> xr.DataArray:
         return data
 
     lower, upper = float(bounds[0]), float(bounds[1])
+    # CF: for packed data ``valid_range`` is in packed units, but the values here are already
+    # unpacked, so bring the bounds to physical units (comparing them directly kept or dropped the
+    # wrong values).
+    scale = float(data.encoding.get("scale_factor", 1.0))
+    offset = float(data.encoding.get("add_offset", 0.0))
+    lower, upper = lower * scale + offset, upper * scale + offset
     if lower > upper:
         lower, upper = upper, lower
     return data.where((data >= lower) & (data <= upper))
@@ -146,12 +164,25 @@ def ensure_time_lat_lon(data: xr.DataArray) -> xr.DataArray:
     return standardized.transpose("time", "lat", "lon")
 
 
+def _drop_duplicate_longitudes(data: XarrayLike) -> XarrayLike:
+    """Keep the first of repeated longitudes (a cyclic point stored as both 0 and 360)."""
+    values = np.asarray(data["lon"].values)
+    _, first = np.unique(values, return_index=True)
+    if first.size == values.size:
+        return data
+    return data.isel(lon=np.sort(first))
+
+
 def normalize_longitude(
     data: XarrayLike,
     *,
     target: str = "0_360",
 ) -> XarrayLike:
-    """Normalize longitude to either ``0_360`` or ``-180_180`` and sort it."""
+    """Normalize longitude to either ``0_360`` or ``-180_180``, sort it and drop a cyclic duplicate.
+
+    A grid that stores the cyclic point (0 and 360, or -180 and 180) ends up with two identical
+    longitudes after wrapping; the duplicate is removed so the zonal axis is strictly periodic.
+    """
     standardized = rename_standard_coordinates(data)
     if "lon" not in standardized.coords:
         return standardized
@@ -159,15 +190,19 @@ def normalize_longitude(
     lon = standardized["lon"]
     if target == "0_360":
         new_lon = lon % 360.0
+        new_lon = new_lon.where(new_lon < 360.0, new_lon - 360.0)  # round-off: -1e-14 % 360 == 360.0
     elif target == "-180_180":
         new_lon = ((lon + 180.0) % 360.0) - 180.0
+        new_lon = new_lon.where(new_lon < 180.0, new_lon - 360.0)
     elif target == "preserve":
         new_lon = lon
     else:
         raise ValueError("`target` must be one of {'0_360', '-180_180', 'preserve'}.")
 
-    standardized = standardized.assign_coords(lon=new_lon)
-    return standardized.sortby("lon")
+    standardized = standardized.assign_coords(lon=new_lon).sortby("lon")
+    if lon.ndim == 1 and target != "preserve":
+        standardized = _drop_duplicate_longitudes(standardized)
+    return standardized
 
 
 def sort_latitude(data: XarrayLike, *, ascending: bool = True) -> XarrayLike:
@@ -259,6 +294,25 @@ def load_dataarray(
     return _ensure_nonempty(data, context=f"Selected data from {Path(path).name}")
 
 
+def time_deltas_in_days(values: np.ndarray) -> np.ndarray:
+    """Elapsed days between consecutive entries of a time axis (datetime64 or cftime objects)."""
+    values = np.asarray(values)
+    if np.issubdtype(values.dtype, np.datetime64):
+        return np.diff(values) / np.timedelta64(1, "D")
+    return np.array([delta.total_seconds() / 86400.0 for delta in np.diff(values)], dtype=float)
+
+
+def time_axis_in_days(coordinate: xr.DataArray) -> np.ndarray:
+    """Days elapsed since the first entry of a time axis; works for datetime64 and cftime calendars
+    (noleap, 360_day, ...), which CMIP models use."""
+    values = np.asarray(coordinate.values)
+    if values.size == 0:
+        return values.astype(float)
+    if np.issubdtype(values.dtype, np.datetime64) or values.dtype == object:
+        return np.concatenate([[0.0], np.cumsum(time_deltas_in_days(values))])
+    return values.astype(float)
+
+
 def describe_dataarray(data: xr.DataArray) -> dict[str, object]:
     """Return a compact metadata summary for logging or docs."""
     data = _ensure_nonempty(data, context="Cannot summarize an empty DataArray")
@@ -279,12 +333,37 @@ def describe_dataarray(data: xr.DataArray) -> dict[str, object]:
     return summary
 
 
+def _netcdf_safe_attrs(attrs: dict[str, object]) -> dict[str, object]:
+    """Make attributes storable in netCDF: drop None, bool -> int, None inside sequences -> NaN, dict -> JSON."""
+    clean: dict[str, object] = {}
+    for key, value in attrs.items():
+        if value is None:
+            continue
+        if isinstance(value, (bool, np.bool_)):
+            clean[key] = int(value)
+        elif isinstance(value, dict):
+            clean[key] = json.dumps(value, default=str)
+        elif isinstance(value, (list, tuple, np.ndarray)):
+            items = list(np.asarray(value, dtype=object).ravel()) if isinstance(value, np.ndarray) else list(value)
+            if all(item is None for item in items):
+                continue
+            if all(item is None or isinstance(item, (int, float, np.number)) for item in items):
+                clean[key] = np.array([np.nan if item is None else item for item in items], dtype=float)
+            else:
+                clean[key] = str(list(items))
+        elif isinstance(value, (str, int, float, np.number)):
+            clean[key] = value
+        else:
+            clean[key] = str(value)
+    return clean
+
+
 def save_dataarray(data: xr.DataArray, path: PathLike) -> Path:
     """Save a DataArray and return the resolved output path."""
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     clean = data.copy()
-    clean.attrs = {key: value for key, value in clean.attrs.items() if value is not None}
+    clean.attrs = _netcdf_safe_attrs(clean.attrs)
     clean.to_netcdf(output_path)
     return output_path
 
@@ -294,11 +373,9 @@ def save_dataset(dataset: xr.Dataset, path: PathLike) -> Path:
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     clean = dataset.copy()
-    clean.attrs = {key: value for key, value in clean.attrs.items() if value is not None}
+    clean.attrs = _netcdf_safe_attrs(clean.attrs)
     for variable_name in clean.data_vars:
-        clean[variable_name].attrs = {
-            key: value for key, value in clean[variable_name].attrs.items() if value is not None
-        }
+        clean[variable_name].attrs = _netcdf_safe_attrs(clean[variable_name].attrs)
     clean.to_netcdf(output_path)
     return output_path
 

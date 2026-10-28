@@ -13,6 +13,7 @@ from tropical_wave_tools.atlas._config import (
     ANTISYMMETRIC_WAVES,
     CASE03_HOV_LAT_BANDS,
 )
+from tropical_wave_tools.io import time_deltas_in_days
 
 
 def _lat_range(data: xr.DataArray, lower: float, upper: float) -> xr.DataArray:
@@ -81,8 +82,8 @@ def _minimum_distance_samples(reference: xr.DataArray, min_distance_days: float)
     meant "7 samples", i.e. 7 hours for hourly data, so events a few days apart were not merged.
     """
     time = reference["time"]
-    if time.size > 1 and np.issubdtype(time.dtype, np.datetime64):
-        step_days = float(np.median(np.diff(time.values)) / np.timedelta64(1, "D"))
+    if time.size > 1 and (np.issubdtype(time.dtype, np.datetime64) or time.dtype == object):
+        step_days = float(np.median(time_deltas_in_days(time.values)))
         if step_days > 0.0:
             return max(1, round(min_distance_days / step_days))
     return max(1, int(min_distance_days))
