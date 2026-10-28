@@ -107,6 +107,7 @@ from tropical_wave_tools.plotting import (
     plot_wind_diagnostics_panel,
     plot_wk_spectrum,
 )
+from tropical_wave_tools.plotting._geo import _format_longitude_label
 from tropical_wave_tools.preprocessing import compute_anomaly
 from tropical_wave_tools.spectral import analyze_wk_spectrum
 from tropical_wave_tools.stats import linear_trend
@@ -146,15 +147,8 @@ def _format_lat_label(value: float) -> str:
 
 
 def _format_lon_label(value: float) -> str:
-    """Format a 0-360 longitude into a compact E/W string."""
-    lon = float(value) % 360.0
-    if np.isclose(lon, 0.0) or np.isclose(lon, 360.0):
-        return "0"
-    if np.isclose(lon, 180.0):
-        return "180"
-    if lon < 180.0:
-        return f"{round(lon)}E"
-    return f"{round(360.0 - lon)}W"
+    """Format a longitude into a compact E/W string (same convention as the Hovmoller axes)."""
+    return _format_longitude_label(value)
 
 
 def _group_comparison_waves(waves: Sequence[str]) -> list[tuple[str, list[str]]]:
@@ -206,6 +200,7 @@ def generate_local_wave_atlas(
     olr_path: PathLike = DEFAULT_LOCAL_PATHS["olr"],
     u850_path: PathLike = DEFAULT_LOCAL_PATHS["u850"],
     v850_path: PathLike = DEFAULT_LOCAL_PATHS["v850"],
+    gpcp_path: PathLike | None = DEFAULT_LOCAL_PATHS["gpcp"],
     waves: Iterable[str] | None = None,
     time_range: tuple[str, str] | None = ("1979-01-01", "2014-12-31"),
     lat_range: tuple[float, float] = (-20.0, 20.0),
@@ -218,7 +213,11 @@ def generate_local_wave_atlas(
     n_harm: int = 3,
     n_workers: int = 4,
 ) -> pd.DataFrame:
-    """Generate a publication-oriented atlas from local OLR and low-level wind data."""
+    """Generate a publication-oriented atlas from local OLR and low-level wind data.
+
+    Case 05 (variance fractions) uses GPCP precipitation when the file ``gpcp_path`` exists and the
+    OLR otherwise; pass ``gpcp_path=None`` to always use the OLR.
+    """
     output_root = Path(output_dir)
     output_root.mkdir(parents=True, exist_ok=True)
     dataset = load_local_wave_fields(
@@ -672,8 +671,8 @@ def generate_local_wave_atlas(
             if wave in multiwave_filtered_olr
         }
 
-        case05_gpcp_path = Path(DEFAULT_LOCAL_PATHS["gpcp"])
-        if case05_gpcp_path.exists():
+        case05_gpcp_path = None if gpcp_path is None else Path(gpcp_path)
+        if case05_gpcp_path is not None and case05_gpcp_path.exists():
             case05_precip = fill_missing_with_time_mean(
                 load_dataarray(
                     case05_gpcp_path,

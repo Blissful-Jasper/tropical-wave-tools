@@ -21,15 +21,31 @@ except ImportError:  # pragma: no cover - optional dependency
 
 
 def _format_longitude_label(value: float) -> str:
-    """Format 0-360 longitudes into compact E/W labels for Hovmoller axes."""
-    lon = float(value) % 360.0
-    if np.isclose(lon, 0.0) or np.isclose(lon, 360.0):
+    """Format a longitude into a compact E/W label (``0``, ``30E``, ``180``, ``90W``).
+
+    The longitude is rounded to whole degrees *before* it is classified, so 359.6 is ``0`` (not
+    ``0W``) and 179.6 is ``180`` (not ``180E``).
+    """
+    lon = round(float(value)) % 360
+    if lon == 0:
         return "0"
-    if np.isclose(lon, 180.0):
+    if lon == 180:
         return "180"
-    if lon < 180.0:
-        return f"{round(lon)}E"
-    return f"{round(360.0 - lon)}W"
+    if lon < 180:
+        return f"{lon}E"
+    return f"{360 - lon}W"
+
+
+def _lat_lon_last(data: xr.DataArray) -> xr.DataArray:
+    """Return ``data`` with latitude and longitude as its last two dimensions.
+
+    The map plots hand ``data.plot.contourf`` and ``quiver`` the array as it is; xarray puts the
+    last dimension on the x axis and ``quiver`` pairs ``.values`` with a (lat, lon) mesh, so a
+    ``(lon, lat)`` input drew a transposed map and wind vectors with the wrong components.
+    """
+    if {"lat", "lon"}.issubset(data.dims):
+        return data.transpose(..., "lat", "lon")
+    return data
 
 
 def _default_map_projection() -> tuple[object, object]:
@@ -87,10 +103,12 @@ def _prepare_projected_field(data: xr.DataArray) -> xr.DataArray:
     if add_cyclic_point is None or "lon" not in data.coords:
         return data
 
+    data = _lat_lon_last(data)
     lon = np.asarray(data["lon"].values, dtype=float)
     if lon.size < 2:
         return data
-    if float(lon.max() - lon.min()) < 300.0:
+    span = float(lon.max() - lon.min())
+    if span < 300.0 or span >= 360.0 - 1e-6:  # regional, or the cyclic point is already stored
         return data
 
     cyclic_values, cyclic_lon = add_cyclic_point(data.values, coord=lon, axis=data.get_axis_num("lon"))

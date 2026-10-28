@@ -15,6 +15,7 @@ from tropical_wave_tools.plotting._geo import (
     _case07_focus_half_width,
     _default_map_projection,
     _focus_longitude_center,
+    _lat_lon_last,
     _prepare_projected_field,
     _set_map_extent_from_field,
     _subset_longitude_window,
@@ -27,6 +28,7 @@ from tropical_wave_tools.plotting._style import (
     _filled_levels,
     _integer_levels_from_data,
     _is_weak_signal,
+    _resolve_extend,
     _symmetric_limit,
     _wave_title_name,
     get_publication_cmap,
@@ -55,6 +57,7 @@ def plot_eof_spatial_patterns_and_pcs(
     with scientific_plot_style():
         if not {"mode", "lat", "lon"}.issubset(eofs.dims):
             raise ValueError("`eofs` must contain mode/lat/lon dimensions.")
+        eofs = _lat_lon_last(eofs)
         time_dim = next((dim for dim in pcs.dims if dim != "mode"), None)
         if time_dim is None:
             raise ValueError("`pcs` must contain one non-mode dimension for time.")
@@ -151,12 +154,20 @@ def plot_eof_modes_with_wind(
     cmap: str | LinearSegmentedColormap = "olr_diverging",
     integer_colorbar: bool = True,
     field_label: str = "PC-regressed OLR (W m$^{-2}$)",
+    colorbar_extend: str | None = None,
     save_path: str | Path | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
-    """Plot EOF-derived map patterns with regressed low-level wind vectors."""
+    """Plot EOF-derived map patterns with regressed low-level wind vectors.
+
+    ``colorbar_extend=None`` (default) extends the shared colorbar when values fall outside the
+    scale instead of leaving them blank.
+    """
     with scientific_plot_style():
         if not {"mode", "lat", "lon"}.issubset(eofs.dims):
             raise ValueError("`eofs` must contain mode/lat/lon dimensions.")
+        eofs = _lat_lon_last(eofs)
+        zonal_wind_patterns = _lat_lon_last(zonal_wind_patterns)
+        meridional_wind_patterns = _lat_lon_last(meridional_wind_patterns)
         selected_modes = [int(mode) for mode in modes]
         eof_subset = eofs.sel(mode=selected_modes)
         lon_center = _focus_longitude_center(eof_subset)
@@ -192,6 +203,7 @@ def plot_eof_modes_with_wind(
             contour_levels = _filled_levels(-vmax, vmax, count=25)
             colorbar_ticks = None
             shared_vmax = float(vmax)
+        extend = _resolve_extend(colorbar_extend, eof_subset, contour_levels)
 
         quiver_reference = _quiver_reference_value(
             zonal_wind_patterns,
@@ -214,7 +226,7 @@ def plot_eof_modes_with_wind(
                     levels=contour_levels,
                     norm=TwoSlopeNorm(vmin=-shared_vmax, vcenter=0.0, vmax=shared_vmax),
                     add_colorbar=False,
-                    extend="neither",
+                    extend=extend,
                 )
                 _overlay_anomaly_contours(map_ax, eof_field, use_cartopy=True, data_crs=data_crs)
                 _set_map_extent_from_field(map_ax, plot_data, data_crs)
@@ -231,7 +243,7 @@ def plot_eof_modes_with_wind(
                     levels=contour_levels,
                     norm=TwoSlopeNorm(vmin=-shared_vmax, vcenter=0.0, vmax=shared_vmax),
                     add_colorbar=False,
-                    extend="neither",
+                    extend=extend,
                 )
                 _overlay_anomaly_contours(map_ax, eof_field)
                 _apply_axes_style(map_ax, grid=False)
@@ -322,6 +334,7 @@ def plot_multiwave_eof_summary(
             axes[row, 1] = cbar_ax
             axes[row, 2] = ts_ax
 
+            eof_field = _lat_lon_last(eof_field)
             vmax = _symmetric_limit(eof_field)
             if use_cartopy:
                 plot_data = _prepare_projected_field(eof_field)

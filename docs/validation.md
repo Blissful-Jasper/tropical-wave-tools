@@ -123,6 +123,15 @@ pytest tests/test_ncl_reference.py          # 存在黄金文件时自动执行
 | `workflows`：`compare_filter_spatial_fields` | RMSE、相关、输出文件 | 可运行并写出 PNG / NetCDF / CSV；两种方法共用同一核心，所以一致性**不是独立检验**，独立验证见上文 NCL 对比 |
 | `filters`：无法分辨的波段 | `eig` / `wig` / `ig` 用日数据 | `CCKWFilter` 返回全零，**曾经**没有任何提示；现在发 `RuntimeWarning` 并在结果属性中写明（`method='legacy'` 会把波段截到 Nyquist） |
 | `cli` | 各子命令端到端 | `prepare-sample-data` **曾经**只能覆盖包内样例，新增 `--output`；其余命令均通过 |
+| `plotting`：色标范围 | 在已知位置放 10 倍于背景的强信号，读取渲染出的像素 | 色标由分位数决定，`extend="neither"` 时最强的信号**曾经**被画成空白：`plot_wk_spectrum`、`plot_hovmoller_comparison`、`plot_lag_longitude_evolution`、`plot_paper_style_hovmoller`（Case 10）、`plot_horizontal_structure`、`plot_lagged_horizontal_structure`、`plot_wind_diagnostics_panel`、交叉谱面板；现在按数据推断 `extend`，强信号以端点色绘出 |
+| `plotting`：位置与颜色 | 渲染像素与 ContourSet 色带逐点对比（Hovmöller、经纬度图、WK 谱、Case 10；含 cartopy） | 一致：经度、纬度、时间、滞后方向正确，缺测格点留白 |
+| `plotting`：维度顺序 | `(lon, lat)` 输入、纬度降序 | `(lon, lat)` 输入**曾经**画成转置的地图，风矢量**静默**用错分量（误差 30 m/s），显著性阴影线抛 `TypeError`；现在输出与维度顺序无关（逐像素相同） |
+| `plotting`：WK 谱叠加 | 色散曲线对 Matsuno 无量纲关系；滤波框、CCKW 包络线对配置 | Kelvin、ER n=1、MRG、EIG n=0 残差 ≲ 1.5e-3，波数符号正确；滤波框与包络线与配置一致；周期标注 2.5 天**曾经**写成 "2d" |
+| `plotting`：折线、趋势、显著性标记 | 与输入数据、`polyfit` 对比 | 一致 |
+| `plotting`：辅助函数 | 色阶、经度标签、经度窗口、循环点 | 色阶覆盖数据且对称；359.6° **曾经**标成 "0W"；已含循环点的全球网格**曾经**再加一个循环点；全零 / 全缺测输入 `plot_spatial_std_comparison` **曾经**崩溃 |
+| `eof`：xeofs 后端 | 对独立协方差特征分解与 SVD 后端；缺测、陆地掩膜 | 清洁数据一致（1e-8）；xeofs 自身拒绝任何 NaN，后端**曾经**因此在缺测时直接报错；结果字典**曾经**缺特征值、North 误差、掩膜；`vertical_eof_with_nan_handling` **曾经**只丢弃全缺测样本，地形以下缺测的层会崩溃；现与 SVD 后端共用缺测处理与结果组装 |
+| `eof`：SVD 不收敛 | 传播波的对称分量（秩亏、特征值严格成对） | numpy 自带 LAPACK 的 `gesdd` 在某些环境下抛 "SVD did not converge"（Atlas 的波 EOF 因此失败）；现在回退到 `gesvd` |
+| `atlas`：端到端工作流（`generate_local_wave_atlas`） | 合成的 Kelvin 波包：k=5、周期 6 天（12°/天），已知日期 | 事件全部落在波包内且每个波包都被找到；`std` 图等于独立滤波后的标准差；滞后合成与 Case 10 回归的传播速度均为 **12.00°/天**（真值 12）；WK 谱峰在 (k=5, 1/6 cpd)；波 EOF 为正交模态对（各 47.8%）；Case 10 阴影在基准点为负；文件齐全、图非空白；GPCP 与 OLR 两种 Case 05 来源 |
 
 约定（Case 10）：预测量是基准点的**滤波 OLR**（标准化，+1σ = 对流被抑制），阴影是对流代理（−OLR）对它的回归，
 所以阴影在基准点、零滞后处为**负**，等值线（滤波 OLR 对自身的回归）为正；正滞后表示场滞后于参考。
@@ -141,9 +150,16 @@ pytest tests/test_ncl_reference.py          # 存在黄金文件时自动执行
     波数 3 的波得到 −1.5 m/s（真值 +15），22 m/s 的单条脊读成 11.4 m/s。
     相位在噪声下的可定义比例也会下降：噪声为振幅的 20% 时，约 71% 的时次有定义相位。
 
+!!! note "关于带边缘"
+    端到端检验里，紧贴 Kelvin 带边缘的波（k=5、周期 10 天；h=8 m 的曲线在 k=5 对应 10.5 天）经 CCKW 滤波后，
+    合成场测得的传播速度是 7.9°/天，而不是 7.2°/天：色散曲线把波包频谱偏低频的一半削掉了，剩下的中心频率偏高。
+    这是滤波带宽的效应，不是流水线误差；把波放到带内（周期 6 天）后测得 12.00°/天，与真值一致。
+
 !!! note "仍未做独立验证"
-    `atlas`（绘图部分）、`plotting` 的绘图细节以及 `xeofs` 后端，目前只有烟雾测试或没有测试。
-    此外 EOF 没有面积权重选项（水平 EOF 通常需要 √cos φ 加权）。
+    图的美观与版式（只检查数据、颜色、位置和标注）；cartopy 的海岸线与陆地要素（需要 Natural Earth 数据，
+    测试只检查数据在地图上的位置）；Streamlit 应用；`geocat-comp` / `metpy` 可选后端。
+    此外 EOF 没有面积权重选项（水平 EOF 通常需要 √cos φ 加权，波 EOF 在 `compute_wave_eof` 里自行加权）。
+    xeofs 与 cartopy 是可选依赖，相应测试在没装时自动跳过，CI 有一个装了它们的任务。
 
 ## 待核实
 

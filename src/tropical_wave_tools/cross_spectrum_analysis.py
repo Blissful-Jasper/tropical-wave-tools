@@ -13,6 +13,7 @@ import xarray as xr
 from tropical_wave_tools.cross_spectrum import calculate_cross_spectrum, remove_annual_cycle
 from tropical_wave_tools.io import load_dataarray
 from tropical_wave_tools.plotting import get_cckw_envelope_curve
+from tropical_wave_tools.plotting._style import _resolve_extend
 
 try:  # pragma: no cover - optional dependency
     import dask
@@ -225,7 +226,13 @@ def plot_cross_spectrum_panel(
     output_path: str | Path | None = None,
     verbose: bool = True,
 ) -> tuple[plt.Figure, np.ndarray]:
-    """Plot coherence-squared panels for multiple experiments."""
+    """Plot coherence-squared panels for multiple experiments.
+
+    Only coherence at or above each experiment's significance threshold is shaded, with phase
+    vectors (in-phase points up, the NCL ``cross_spectra`` convention). Coherence outside
+    ``contour_levels`` is painted with the end colours and the shared colorbar is extended accordingly:
+    perfectly coherent peaks (coherence squared close to 1) used to be left blank.
+    """
     if exp_titles is None:
         exp_titles = [str(experiment).upper() for experiment in experiments]
     if contour_levels is None:
@@ -235,6 +242,13 @@ def plot_cross_spectrum_panel(
     if len(experiments) == 1:
         axes = np.array([axes])
 
+    significant = {}
+    for experiment in experiments:
+        if experiment in results:
+            coh2 = results[experiment]["STC"].sel(component="COH2")
+            significant[experiment] = coh2.where(coh2 >= float(np.asarray(results[experiment]["prob_coh2"]).max()))
+    extend = _resolve_extend(None, list(significant.values()), contour_levels)
+
     contourf = None
     for index, (experiment, title, axis) in enumerate(zip(experiments, exp_titles, axes)):
         if experiment not in results:
@@ -243,15 +257,13 @@ def plot_cross_spectrum_panel(
         wave = results[experiment]["wave"]
         freq = results[experiment]["freq"]
         threshold = float(np.asarray(results[experiment]["prob_coh2"]).max())
-        coh2 = stc.sel(component="COH2")
-        masked = coh2.where(coh2 >= threshold)
-        contourf = masked.plot.contourf(
+        contourf = significant[experiment].plot.contourf(
             ax=axis,
             cmap=cmap,
             levels=contour_levels,
             add_colorbar=False,
             add_labels=False,
-            extend="neither",
+            extend=extend,
         )
 
         wave_sub = wave[::vector_skip]

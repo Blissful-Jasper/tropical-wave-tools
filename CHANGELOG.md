@@ -3,6 +3,35 @@
 ## Unreleased
 
 ### Fixed
+- Filled-contour plots left the *strongest* signals blank. Their colour scales come from robust
+  quantiles (98-99%) and they passed `extend="neither"`, and `contourf` paints nothing outside its
+  outermost level: a 10-sigma event on a 1-sigma background was a hole in `plot_hovmoller_comparison`,
+  `plot_lag_longitude_evolution`, `plot_paper_style_hovmoller` (the Case 10 figure),
+  `plot_horizontal_structure`, `plot_lagged_horizontal_structure`, `plot_wind_diagnostics_panel`
+  (non-integer colorbar), `plot_eof_modes_with_wind`, `plot_wk_spectrum` (peaks above 3.6 times the
+  background) and the cross-spectrum panel (coherence squared above 0.8). `colorbar_extend` now defaults
+  to `None`, which extends the colorbar (`"min"`, `"max"` or `"both"`) only where values fall outside the
+  scale and paints them with the end colours; `"neither"` is still accepted. Multi-panel figures resolve
+  the extension once so that the shared colorbar matches every panel.
+- Map plots took the dimension order of the input at face value. A `(lon, lat)` array drew a transposed map,
+  gave `quiver` wind vectors with the wrong components (silently, 30 m/s off in a test), and made the
+  significance hatching of `plot_wave_monthly_longitude_comparison` raise `TypeError`. Latitude and
+  longitude are now put last before plotting; the output no longer depends on the order.
+- `plot_spatial_std_comparison` crashed on all-zero or all-NaN fields ("Contour levels must be increasing"),
+  `plot_wk_spectrum` labelled a 2.5-day guide line "2d", `_format_longitude_label` turned 359.6 into "0W"
+  and 179.6 into "180E", and `_prepare_projected_field` added a second cyclic point to a grid that already
+  stored one.
+- xeofs backend of `EOFAnalyzer`: xeofs refuses any NaN, so a land mask, a missing day or a level below
+  the ground made it raise "Input contains NaN" where the SVD backend works. Both backends now share the
+  missing-data handling and the result assembly (only the decomposition differs), so the xeofs results
+  carry the same fields (eigenvalues, North errors, degrees of freedom, masks, previously `None`) and agree
+  with the SVD backend to 1e-8. The data are no longer re-centred by xeofs (they are anomalies already),
+  which changes the numbers by about 1e-7 for harmonic-removed input.
+- `vertical_eof_with_nan_handling` only dropped samples that are missing at *every* level, so a level below
+  the ground made xeofs fail; a sample with any missing level is dropped now, as in `EOFAnalyzer`.
+- `np.linalg.svd` raised "SVD did not converge" on the wave-EOF input of a propagating wave (finite, rank
+  deficient, exactly paired singular values) with some LAPACK builds, which stopped
+  `generate_local_wave_atlas`. The decomposition falls back to the QR-iteration driver (`gesvd`).
 - `io.normalize_longitude` (and so `standardize_data`) left a duplicated column when the file stored a
   cyclic point (0 and 360, or -180 and 180): after wrapping, longitude 0 appeared twice, which defeats
   the cyclic-point detection in `_kf_filter`. Duplicated longitudes are now dropped. A longitude of
@@ -125,6 +154,18 @@
   matrix with coverage, and a documentation build on every pull request.
 
 ### Added
+- `generate_local_wave_atlas(gpcp_path=...)`: the GPCP file of Case 05 was a fixed local path; `None` always
+  uses the OLR.
+- `weak_signal_threshold` (default 0.1, `None` switches it off) for the multi-wave comparison plots: the
+  "Weak signal at daily sampling" note used a fixed 0.1 and mislabelled fields in other units.
+- Rendering checks (`tests/test_plotting_rendering.py`): the tests read rendered pixels at known data
+  positions and compare them with the colour bands of the contours, check arrows, hatching, lines and
+  rectangles against the inputs, and test the WK overlay against the Matsuno relations. An end-to-end
+  atlas test (`tests/test_atlas_workflow.py`) runs the whole workflow on a synthetic Kelvin wave with known
+  dates and speed; `tests/test_xeofs_backend.py` and `tests/test_eof_svd_fallback.py` cover the EOF
+  backends.
+- `pip install "tropical-wave-tools[maps]"` (cartopy), and a CI job that installs the optional dependencies
+  so the xeofs and cartopy tests actually run.
 - `prepare-sample-data --output PATH`: the command could only overwrite the packaged sample file.
 - Checks for `io`, `workflows` and the command-line entry points (`tests/test_io_and_workflows.py`):
   cyclic longitudes (and filtering a grid that stores one), packed `valid_range`, variable inference,

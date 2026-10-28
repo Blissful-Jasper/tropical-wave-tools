@@ -235,19 +235,23 @@ def plot_wk_spectrum(
         figure, axes = plt.subplots(1, 2, figsize=(13.8, 6.4), dpi=230, constrained_layout=True)
         figure.patch.set_facecolor("white")
 
+        # Ratios below the lowest level are background and stay blank on purpose, but peaks above the
+        # highest level must be painted (with the top colour), not left as holes.
+        peak = max(float(np.nanmax(symmetric_plot.values)), float(np.nanmax(antisymmetric_plot.values)))
+        extend = "max" if peak > float(levels[-1]) else "neither"
         image = symmetric_plot.plot.contourf(
             ax=axes[0],
             levels=levels,
             cmap=cmap,
             add_colorbar=False,
-            extend="neither",
+            extend=extend,
         )
         antisymmetric_plot.plot.contourf(
             ax=axes[1],
             levels=levels,
             cmap=cmap,
             add_colorbar=False,
-            extend="neither",
+            extend=extend,
         )
 
         contour_levels = levels[levels >= 1.1]
@@ -283,7 +287,7 @@ def plot_wk_spectrum(
                     axis.text(
                         -max_wn + 1,
                         frequency + 0.01,
-                        f"{int(period_days)}d",
+                        f"{period_days:g}d",
                         fontsize=8,
                         color="#475569",
                         bbox={"facecolor": "white", "alpha": 0.8, "edgecolor": "none"},

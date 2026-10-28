@@ -239,6 +239,29 @@ def _filled_levels(vmin: float, vmax: float, *, count: int = 19) -> np.ndarray:
     return np.linspace(vmin, vmax, count)
 
 
+def _resolve_extend(extend: str | None, data: object, levels: object) -> str:
+    """Return the ``extend`` that leaves no value of ``data`` unpainted by a filled contour plot.
+
+    ``contourf`` paints nothing outside the outermost ``levels`` unless the colormap is extended,
+    which turned the strongest signals into blank patches whenever the levels came from a robust
+    quantile. An explicit ``extend`` is returned unchanged; ``None`` picks ``"min"``, ``"max"``,
+    ``"both"`` or ``"neither"`` from the finite values of ``data`` (an array, a DataArray or a
+    sequence of them).
+    """
+    if extend is not None:
+        return extend
+    items = data if isinstance(data, (list, tuple)) else [data]
+    pieces = [np.asarray(getattr(item, "values", item), dtype=float).ravel() for item in items]
+    values = np.concatenate(pieces) if pieces else np.array([], dtype=float)
+    values = values[np.isfinite(values)]
+    boundaries = np.asarray(levels, dtype=float)
+    if values.size == 0 or boundaries.size < 2:
+        return "neither"
+    below = bool(values.min() < boundaries.min())
+    above = bool(values.max() > boundaries.max())
+    return "both" if below and above else "min" if below else "max" if above else "neither"
+
+
 def _nice_step(span: float, *, target_steps: int = 8, integer: bool = False) -> float:
     """Return a rounded colorbar step size."""
     if not np.isfinite(span) or span <= 0.0:

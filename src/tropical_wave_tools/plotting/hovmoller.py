@@ -21,6 +21,7 @@ from tropical_wave_tools.plotting._style import (
     _filled_levels,
     _integer_levels_from_data,
     _nice_step,
+    _resolve_extend,
     _style_colorbar,
     _symmetric_limit,
     get_publication_cmap,
@@ -68,10 +69,16 @@ def plot_hovmoller_comparison(
     colorbar_label: str = "Amplitude",
     colorbar_orientation: str = "vertical",
     integer_colorbar: bool = False,
-    colorbar_extend: str = "neither",
+    colorbar_extend: str | None = None,
     save_path: str | Path | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
-    """Plot two Hovmoller panels with a shared symmetric color scale."""
+    """Plot two Hovmoller panels with a shared symmetric color scale.
+
+    The scale spans the ``quantile`` of ``|values|``; ``colorbar_extend=None`` (default) extends the
+    colorbar (``"min"``/``"max"``/``"both"``) when values fall outside it so the strongest signals
+    are painted with the end colours instead of being left blank. Pass ``"neither"`` to force a
+    plain colorbar.
+    """
     with scientific_plot_style():
         cmap = get_publication_cmap(str(cmap)) if isinstance(cmap, str) else cmap
         if left.ndim != 2 or right.ndim != 2:
@@ -90,6 +97,7 @@ def plot_hovmoller_comparison(
         else:
             contour_levels = _filled_levels(-vmax, vmax, count=23)
             colorbar_ticks = None
+        extend = _resolve_extend(colorbar_extend, [left, right], contour_levels)
         image = left.plot.contourf(
             ax=axes[0],
             x=x,
@@ -98,7 +106,7 @@ def plot_hovmoller_comparison(
             levels=contour_levels,
             norm=TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax),
             add_colorbar=False,
-            extend=colorbar_extend,
+            extend=extend,
         )
         right.plot.contourf(
             ax=axes[1],
@@ -108,7 +116,7 @@ def plot_hovmoller_comparison(
             levels=contour_levels,
             norm=TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax),
             add_colorbar=False,
-            extend=colorbar_extend,
+            extend=extend,
         )
 
         for index, (axis, title) in enumerate(zip(axes, (left_title, right_title))):
@@ -200,6 +208,7 @@ def plot_paper_style_hovmoller(
     contour_target_steps: int = 6,
     contour_quantile: float = 0.98,
     xticks: Sequence[float] | None = None,
+    colorbar_extend: str | None = None,
     save_path: str | Path | None = None,
 ) -> tuple[plt.Figure, plt.Axes]:
     """Plot a Lubis & Jacobi style lagged-regression Hovmoller panel."""
@@ -225,7 +234,7 @@ def plot_paper_style_hovmoller(
             levels=shading_levels,
             norm=TwoSlopeNorm(vmin=-shading_vmax, vcenter=0.0, vmax=shading_vmax),
             add_colorbar=False,
-            extend="neither",
+            extend=_resolve_extend(colorbar_extend, shading, shading_levels),
         )
 
         contour_limit = _symmetric_limit(contours, quantile=contour_quantile)
@@ -321,10 +330,14 @@ def plot_lag_longitude_evolution(
     title: str,
     cmap: str | LinearSegmentedColormap = "olr_diverging",
     integer_colorbar: bool = False,
-    colorbar_extend: str = "neither",
+    colorbar_extend: str | None = None,
     save_path: str | Path | None = None,
 ) -> tuple[plt.Figure, plt.Axes]:
-    """Plot lag-versus-longitude evolution for a composite field."""
+    """Plot lag-versus-longitude evolution for a composite field.
+
+    ``colorbar_extend=None`` (default) extends the colorbar when values fall outside the scale; see
+    :func:`plot_hovmoller_comparison`.
+    """
     with scientific_plot_style():
         if not {"lag", "lon"}.issubset(lagged_equatorial_field.dims):
             raise ValueError("`lagged_equatorial_field` must contain lag/lon dimensions.")
@@ -345,7 +358,7 @@ def plot_lag_longitude_evolution(
             levels=contour_levels,
             norm=TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax),
             add_colorbar=False,
-            extend=colorbar_extend,
+            extend=_resolve_extend(colorbar_extend, lagged_equatorial_field, contour_levels),
         )
         _overlay_anomaly_contours(axis, lagged_equatorial_field, x="lon", y="lag")
         axis.axhline(0.0, color="#334155", linestyle="--", linewidth=0.8)

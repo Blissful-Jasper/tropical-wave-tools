@@ -8,6 +8,7 @@ import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.linalg
 import xarray as xr
 
 from tropical_wave_tools.io import normalize_longitude, rename_standard_coordinates
@@ -20,6 +21,22 @@ try:  # pragma: no cover - optional dependency
 except ImportError:  # pragma: no cover - optional dependency
     _LAND_MASK_AVAILABLE = False
     globe = None
+
+
+def _thin_svd(matrix: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Left singular vectors and singular values of ``matrix``, robust to LAPACK failing to converge.
+
+    ``numpy.linalg.svd`` uses the divide-and-conquer driver (``gesdd``), which can raise
+    "SVD did not converge" on perfectly finite but degenerate matrices. A propagating wave
+    projected onto its symmetric component is exactly that: rank-deficient (mirrored latitudes
+    repeat) with exactly paired singular values. The slower QR-iteration driver (``gesvd``)
+    handles them.
+    """
+    try:
+        left, singular_values, _ = np.linalg.svd(matrix, full_matrices=False)
+    except np.linalg.LinAlgError:
+        left, singular_values, _ = scipy.linalg.svd(matrix, full_matrices=False, lapack_driver="gesvd")
+    return left, singular_values
 
 
 class EOFAnalyzer:
@@ -84,14 +101,9 @@ class EOFAnalyzer:
             "ensemble": find_dim(["member", "ensemble", "ens"]),
         }
 
-    def _compute_eof_svd(
-        self,
-        matrix: np.ndarray,
-        *,
-        nan_axis: str = "sample",
-        temporal_shape: tuple[int, int] | None = None,
-    ) -> dict[str, np.ndarray]:
-        """Compute EOFs from a ``feature x sample`` matrix.
+    @staticmethod
+    def _select_valid(matrix: np.ndarray, nan_axis: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Drop the missing data of a ``feature x sample`` matrix; return it with the kept masks.
 
         ``nan_axis`` says what a missing value invalidates:
 
@@ -101,9 +113,6 @@ class EOFAnalyzer:
           all-missing samples, then the grid points that still contain a missing value, for
           example a land mask. Dropping *samples* here would discard every time step as soon
           as one grid point is masked.
-
-        ``temporal_shape=(n_time, n_space)`` tells the degrees-of-freedom estimate that the
-        samples are ordered time-major, so the lag-1 autocorrelation is taken in time.
         """
         if nan_axis == "feature":
             valid_mask = ~np.all(np.isnan(matrix), axis=0)
@@ -117,15 +126,33 @@ class EOFAnalyzer:
             raise ValueError("`nan_axis` must be 'sample' or 'feature'.")
         if matrix_valid.size == 0:
             raise ValueError("No valid data remain after removing missing values.")
+        return matrix_valid, valid_mask, feature_valid
 
-        left, singular_values, _ = np.linalg.svd(matrix_valid, full_matrices=False)
-        patterns_valid = left.T
+    def _assemble_eof_results(
+        self,
+        matrix: np.ndarray,
+        matrix_valid: np.ndarray,
+        patterns_valid: np.ndarray,
+        singular_values: np.ndarray,
+        valid_mask: np.ndarray,
+        feature_valid: np.ndarray,
+        temporal_shape: tuple[int, int] | None,
+    ) -> dict[str, np.ndarray]:
+        """Turn a decomposition of the valid data into the result dictionary shared by both backends.
+
+        ``patterns_valid`` is ``mode x valid feature`` with unit-norm rows and ``singular_values``
+        the matching singular values (at least as many modes as requested). The explained variance
+        is relative to the *total* variance of the valid data, so truncated decompositions report
+        the same percentages as the full one. The data are not re-centred: they are anomalies
+        already.
+        """
+        nt = matrix_valid.shape[1]
         pc_series = np.dot(patterns_valid, matrix_valid)
         eof_patterns = np.full((patterns_valid.shape[0], matrix.shape[0]), np.nan)
         eof_patterns[:, feature_valid] = patterns_valid
-        nt = matrix_valid.shape[1]
         eigenvalues = singular_values**2 / nt
-        explained_variance = eigenvalues / np.sum(eigenvalues) * 100.0
+        total_variance = float(np.sum(matrix_valid**2)) / nt
+        explained_variance = eigenvalues / total_variance * 100.0
         phi_L, phi_0, dof = self._estimate_dof(matrix, L=1, temporal_shape=temporal_shape)
         eigenvalue_errors = explained_variance * np.sqrt(2.0 / dof)
         return {
@@ -141,48 +168,66 @@ class EOFAnalyzer:
             "phi_L": phi_L,
         }
 
-    def _compute_eof_xeofs(self, data: xr.DataArray, n_modes: int = 10) -> dict[str, object]:
-        """Compute EOFs using xeofs if available."""
+    def _compute_eof_svd(
+        self,
+        matrix: np.ndarray,
+        *,
+        nan_axis: str = "sample",
+        temporal_shape: tuple[int, int] | None = None,
+        n_modes: int | None = None,
+    ) -> dict[str, np.ndarray]:
+        """Compute EOFs from a ``feature x sample`` matrix with a full SVD.
+
+        ``nan_axis`` is described in :meth:`_select_valid`. ``temporal_shape=(n_time, n_space)``
+        tells the degrees-of-freedom estimate that the samples are ordered time-major, so the
+        lag-1 autocorrelation is taken in time. ``n_modes`` is accepted for symmetry with the
+        xeofs backend; the full decomposition is always computed.
+        """
+        matrix_valid, valid_mask, feature_valid = self._select_valid(matrix, nan_axis)
+        left, singular_values = _thin_svd(matrix_valid)
+        return self._assemble_eof_results(
+            matrix, matrix_valid, left.T, singular_values, valid_mask, feature_valid, temporal_shape
+        )
+
+    def _compute_eof_xeofs(
+        self,
+        matrix: np.ndarray,
+        *,
+        nan_axis: str = "sample",
+        temporal_shape: tuple[int, int] | None = None,
+        n_modes: int = 10,
+    ) -> dict[str, np.ndarray]:
+        """Compute EOFs of a ``feature x sample`` matrix with xeofs.
+
+        The missing-data handling, scaling and result dictionary are the same as for the SVD
+        backend (xeofs itself refuses any NaN); only the decomposition is delegated to
+        ``xeofs.single.EOF``, without re-centring or weighting. The modes are truncated to
+        ``n_modes``. xeofs may use a randomized SVD for large problems, which is accurate for the
+        leading, well-separated modes but approximate for weak ones.
+        """
         try:
             import xeofs as xe
         except ImportError as exc:  # pragma: no cover - optional dependency
             raise ImportError("xeofs is required for method='xeofs'.") from exc
 
-        dims = self._detect_dims(data)
-        time_dim = dims["time"]
-        level_dim = dims["level"]
-        lat_dim = dims["lat"]
-        lon_dim = dims["lon"]
-
-        if time_dim is None or lat_dim is None or lon_dim is None:
-            raise ValueError("time/lat/lon dimensions are required.")
-
-        if level_dim is not None:
-            stacked = data.stack(sample=(time_dim, lat_dim, lon_dim)).rename({level_dim: "feature"})
-            model = xe.single.EOF(n_modes=n_modes, check_nans=False)
-            model.fit(stacked, dim="sample")
-            components = model.components().rename({"feature": level_dim})
-            scores = model.scores().unstack("sample")
-        else:
-            model = xe.single.EOF(n_modes=n_modes, check_nans=False)
-            model.fit(data, dim=time_dim)
-            components = model.components()
-            scores = model.scores()
-
-        explained_variance = model.explained_variance_ratio() * 100.0
-        return {
-            "eofs": components,
-            "pc_scores": scores,
-            "explained_variance": explained_variance.values,
-            "eof_patterns": components.values,
-            "pc_series": getattr(scores, "values", None),
-            "eigenvalues": None,
-            "eigenvalue_errors": None,
-            "degrees_of_freedom": None,
-            "valid_mask": None,
-            "phi_0": None,
-            "phi_L": None,
-        }
+        matrix_valid, valid_mask, feature_valid = self._select_valid(matrix, nan_axis)
+        n_use = int(min(n_modes, *matrix_valid.shape))
+        model = xe.single.EOF(
+            n_modes=n_use, center=False, standardize=False, use_coslat=False, check_nans=False
+        )
+        model.fit(
+            xr.DataArray(
+                matrix_valid.T,
+                dims=("sample", "feature"),
+                coords={"sample": np.arange(matrix_valid.shape[1]), "feature": np.arange(matrix_valid.shape[0])},
+            ),
+            dim="sample",
+        )
+        patterns_valid = model.components().transpose("mode", "feature").values
+        singular_values = model.singular_values().values
+        return self._assemble_eof_results(
+            matrix, matrix_valid, patterns_valid, singular_values, valid_mask, feature_valid, temporal_shape
+        )
 
     def _estimate_dof(
         self,
@@ -277,56 +322,53 @@ class EOFAnalyzer:
             climatology_smoothed = climatology
             anomalies = data - climatology
 
-        if self.method == "xeofs":
-            eof_results = self._compute_eof_xeofs(anomalies, n_modes=n_modes)
-            eofs = eof_results["eofs"]
-            pcs = eof_results["pc_scores"]
+        compute = self._compute_eof_xeofs if self.method == "xeofs" else self._compute_eof_svd
+        if level_dim is not None:
+            stacked = anomalies.stack(sample=(time_dim, lat_dim, lon_dim))
+            matrix = stacked.transpose(level_dim, "sample").values
+            eof_results = compute(
+                matrix,
+                nan_axis="sample",
+                temporal_shape=(anomalies[time_dim].size, anomalies[lat_dim].size * anomalies[lon_dim].size),
+                n_modes=n_modes,
+            )
+            n_use = min(n_modes, eof_results["eof_patterns"].shape[0])
+            eofs = xr.DataArray(
+                eof_results["eof_patterns"][:n_use, :],
+                dims=("mode", level_dim),
+                coords={"mode": np.arange(1, n_use + 1), level_dim: anomalies[level_dim]},
+                name="eofs",
+            )
+            valid_mask = eof_results["valid_mask"]
+            pc_valid = eof_results["pc_series"][:n_use, :]
+            full_scores = xr.DataArray(
+                np.full((n_use, stacked.sample.size), np.nan),
+                dims=("mode", "sample"),
+                coords={"mode": np.arange(1, n_use + 1), "sample": stacked.sample},
+            )
+            full_scores.loc[{"sample": stacked.sample[valid_mask]}] = pc_valid
+            pcs = full_scores.unstack("sample").rename("pcs")
         else:
-            if level_dim is not None:
-                stacked = anomalies.stack(sample=(time_dim, lat_dim, lon_dim))
-                matrix = stacked.transpose(level_dim, "sample").values
-                eof_results = self._compute_eof_svd(
-                    matrix,
-                    nan_axis="sample",
-                    temporal_shape=(anomalies[time_dim].size, anomalies[lat_dim].size * anomalies[lon_dim].size),
-                )
-                n_use = min(n_modes, eof_results["eof_patterns"].shape[0])
-                eofs = xr.DataArray(
-                    eof_results["eof_patterns"][:n_use, :],
-                    dims=("mode", level_dim),
-                    coords={"mode": np.arange(1, n_use + 1), level_dim: anomalies[level_dim]},
-                    name="eofs",
-                )
-                valid_mask = eof_results["valid_mask"]
-                pc_valid = eof_results["pc_series"][:n_use, :]
-                full_scores = xr.DataArray(
-                    np.full((n_use, stacked.sample.size), np.nan),
-                    dims=("mode", "sample"),
-                    coords={"mode": np.arange(1, n_use + 1), "sample": stacked.sample},
-                )
-                full_scores.loc[{"sample": stacked.sample[valid_mask]}] = pc_valid
-                pcs = full_scores.unstack("sample").rename("pcs")
-            else:
-                stacked = anomalies.stack(feature=(lat_dim, lon_dim)).transpose("feature", time_dim)
-                matrix = stacked.values
-                eof_results = self._compute_eof_svd(matrix, nan_axis="feature")
-                n_use = min(n_modes, eof_results["eof_patterns"].shape[0])
-                eof_flat = xr.DataArray(
-                    eof_results["eof_patterns"][:n_use, :],
-                    dims=("mode", "feature"),
-                    coords={"mode": np.arange(1, n_use + 1), "feature": stacked.feature},
-                    name="eofs",
-                )
-                eofs = eof_flat.unstack("feature")
-                valid_mask = eof_results["valid_mask"]
-                full_pc = np.full((n_use, stacked[time_dim].size), np.nan)
-                full_pc[:, valid_mask] = eof_results["pc_series"][:n_use, :]
-                pcs = xr.DataArray(
-                    full_pc,
-                    dims=("mode", time_dim),
-                    coords={"mode": np.arange(1, n_use + 1), time_dim: anomalies[time_dim]},
-                    name="pcs",
-                )
+            stacked = anomalies.stack(feature=(lat_dim, lon_dim)).transpose("feature", time_dim)
+            matrix = stacked.values
+            eof_results = compute(matrix, nan_axis="feature", n_modes=n_modes)
+            n_use = min(n_modes, eof_results["eof_patterns"].shape[0])
+            eof_flat = xr.DataArray(
+                eof_results["eof_patterns"][:n_use, :],
+                dims=("mode", "feature"),
+                coords={"mode": np.arange(1, n_use + 1), "feature": stacked.feature},
+                name="eofs",
+            )
+            eofs = eof_flat.unstack("feature")
+            valid_mask = eof_results["valid_mask"]
+            full_pc = np.full((n_use, stacked[time_dim].size), np.nan)
+            full_pc[:, valid_mask] = eof_results["pc_series"][:n_use, :]
+            pcs = xr.DataArray(
+                full_pc,
+                dims=("mode", time_dim),
+                coords={"mode": np.arange(1, n_use + 1), time_dim: anomalies[time_dim]},
+                name="pcs",
+            )
 
         self.eof_results = {
             **eof_results,
@@ -451,10 +493,14 @@ def eof_xeofs(data: xr.DataArray, **kwargs: object) -> tuple[EOFAnalyzer, dict[s
 
 
 def _array_to_features(vert_vel: xr.DataArray) -> tuple[xr.DataArray, xr.DataArray, dict[str, xr.DataArray]]:
-    """Convert a 4D field to a NaN-filtered feature matrix."""
+    """Convert a 4D field to a feature matrix of the samples that are complete at every level.
+
+    A sample (one time, latitude and longitude) with a missing level, for example a level below the
+    ground, is dropped as a whole, which is also what ``EOFAnalyzer`` does for vertical EOFs.
+    """
     stacked = vert_vel.stack(sample=("time", "lat", "lon"))
     original_coords = {"sample": stacked.sample, "level": stacked.level}
-    valid_mask = ~stacked.isnull().all(dim="level")
+    valid_mask = ~stacked.isnull().any(dim="level")
     features = stacked.isel(sample=valid_mask.values).persist() if hasattr(stacked, "persist") else stacked.isel(sample=valid_mask.values)
     return features, valid_mask, original_coords
 
@@ -480,7 +526,7 @@ def _reconstruct_scores(
         coords={"mode": scores.mode, "sample": original_coords["sample"]},
         dims=["mode", "sample"],
     )
-    full_scores.loc[{"sample": original_coords["sample"][valid_mask]}] = scores.values
+    full_scores.loc[{"sample": original_coords["sample"][valid_mask]}] = scores.transpose("mode", "sample").values
     return full_scores.unstack("sample")
 
 

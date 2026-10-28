@@ -19,7 +19,8 @@ pip install -e ".[dev]"            # numpy, scipy, xarray, netCDF4, matplotlib, 
 ```
 
 Optional extras: `docs` (mkdocs), `app` (Streamlit demo), `diagnostics` (MetPy), `advanced`
-(dask, xeofs, land masks), `grid` (healpy, numba). Python 3.9 or newer.
+(dask, xeofs, land masks), `maps` (cartopy, for projected maps), `grid` (healpy, numba).
+Python 3.9 or newer. Without cartopy the map plots fall back to plain longitude-latitude axes.
 
 ## Quick start
 

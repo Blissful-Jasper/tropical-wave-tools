@@ -68,6 +68,9 @@ advanced = [
   "psutil>=5.9",
   "xeofs>=3.0",
 ]
+maps = [
+  "cartopy>=0.22",
+]
 grid = [
   "healpy>=1.17",
   "numba>=0.59",

@@ -17,6 +17,7 @@ from tropical_wave_tools.plotting._style import (
     _is_weak_signal,
     _nice_step,
     _normalize_cycle_values,
+    _resolve_extend,
     _style_colorbar,
     _wave_title_name,
     get_publication_cmap,
@@ -270,9 +271,14 @@ def plot_wave_monthly_cycle_comparison(
     monthly_significance: dict[str, dict[str, xr.DataArray]] | None = None,
     normalize_each_series: bool = False,
     normalization: str = "annual_mean",
+    weak_signal_threshold: float | None = 0.1,
     save_path: str | Path | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
-    """Plot monthly RMS annual cycles for multiple waves."""
+    """Plot monthly RMS annual cycles for multiple waves.
+
+    A panel whose series all peak below ``weak_signal_threshold`` is annotated "Weak signal at daily
+    sampling"; pass ``None`` to switch the annotation off.
+    """
     with scientific_plot_style():
         n_panels = len(wave_names)
         nrows = int(np.ceil(n_panels / ncols))
@@ -343,7 +349,9 @@ def plot_wave_monthly_cycle_comparison(
                         fontsize=7.1,
                         color="#475569",
                     )
-            if all(_is_weak_signal(values, threshold=0.1) for values in series.values()):
+            if weak_signal_threshold is not None and all(
+                _is_weak_signal(values, threshold=weak_signal_threshold) for values in series.values()
+            ):
                 axis.text(
                     0.5,
                     0.5,
@@ -372,9 +380,14 @@ def plot_wave_monthly_longitude_comparison(
     cmap: str | LinearSegmentedColormap = "seasonal",
     colorbar_label: str = "Projected monthly RMS",
     significance_fields: Sequence[xr.DataArray] | None = None,
+    weak_signal_threshold: float | None = 0.1,
     save_path: str | Path | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
-    """Plot month-longitude seasonal evolution for multiple waves."""
+    """Plot month-longitude seasonal evolution for multiple waves.
+
+    ``significance_fields`` are p-values on (month, lon) in either dimension order; cells with
+    p < 0.05 are hatched. ``weak_signal_threshold`` works as in :func:`plot_wave_monthly_cycle_comparison`.
+    """
     if len(monthly_longitude_fields) != len(wave_names):
         raise ValueError("`monthly_longitude_fields` and `wave_names` must have the same length.")
 
@@ -392,6 +405,8 @@ def plot_wave_monthly_longitude_comparison(
         axes = np.atleast_1d(axes).reshape(nrows, ncols)
         vmax = max(float(field.quantile(0.98).item()) for field in monthly_longitude_fields)
         vmin = min(float(field.quantile(0.02).item()) for field in monthly_longitude_fields)
+        shared_levels = _filled_levels(vmin, vmax)
+        extend = _resolve_extend(None, list(monthly_longitude_fields), shared_levels)
         image = None
 
         for panel_index, (axis, wave_name, field) in enumerate(zip(axes.flat, wave_names, monthly_longitude_fields)):
@@ -400,13 +415,14 @@ def plot_wave_monthly_longitude_comparison(
                 x="lon",
                 y="month",
                 cmap=cmap,
-                levels=_filled_levels(vmin, vmax),
+                levels=shared_levels,
                 vmin=vmin,
                 vmax=vmax,
                 add_colorbar=False,
+                extend=extend,
             )
             if significance_fields is not None:
-                significance = significance_fields[panel_index]
+                significance = significance_fields[panel_index].transpose("month", "lon")
                 significant_mask = xr.where(significance < 0.05, 1.0, np.nan)
                 axis.contourf(
                     significance["lon"],
@@ -432,7 +448,7 @@ def plot_wave_monthly_longitude_comparison(
                     color="#475569",
                     bbox={"facecolor": "white", "alpha": 0.72, "edgecolor": "none", "pad": 1.2},
                 )
-            if _is_weak_signal(field, threshold=0.1):
+            if weak_signal_threshold is not None and _is_weak_signal(field, threshold=weak_signal_threshold):
                 axis.text(
                     0.5,
                     0.5,
@@ -471,9 +487,13 @@ def plot_wave_annual_trend_comparison(
     wave_names: Sequence[str],
     ncols: int = 3,
     trend_pvalues: dict[str, float] | None = None,
+    weak_signal_threshold: float | None = 0.1,
     save_path: str | Path | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
-    """Plot annual RMS time series with fitted linear trends for multiple waves."""
+    """Plot annual RMS time series with fitted linear trends for multiple waves.
+
+    ``weak_signal_threshold`` works as in :func:`plot_wave_monthly_cycle_comparison`.
+    """
     with scientific_plot_style():
         n_panels = len(wave_names)
         nrows = int(np.ceil(n_panels / ncols))
@@ -515,7 +535,9 @@ def plot_wave_annual_trend_comparison(
             axis.set_ylabel("Projected RMS")
             _apply_axes_style(axis, grid=True)
             _add_panel_label(axis, chr(65 + panel_index))
-            if _is_weak_signal(values[valid] if valid.any() else values, threshold=0.1):
+            if weak_signal_threshold is not None and _is_weak_signal(
+                values[valid] if valid.any() else values, threshold=weak_signal_threshold
+            ):
                 axis.text(
                     0.5,
                     0.5,

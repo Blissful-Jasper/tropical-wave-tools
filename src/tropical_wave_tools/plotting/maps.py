@@ -14,6 +14,7 @@ from tropical_wave_tools.plotting._geo import (
     _add_map_guides,
     _default_map_projection,
     _focus_longitude_center,
+    _lat_lon_last,
     _prepare_projected_field,
     _set_map_extent_from_field,
     _subset_longitude_window,
@@ -28,6 +29,7 @@ from tropical_wave_tools.plotting._style import (
     _filled_levels,
     _integer_levels_from_data,
     _is_weak_signal,
+    _resolve_extend,
     _scientific_integer_levels_from_data,
     _signed_levels_from_data,
     _std_label,
@@ -68,6 +70,7 @@ def plot_latlon_field(
     with scientific_plot_style():
         use_cartopy = (ccrs is not None) if use_cartopy is None else use_cartopy
         cmap = get_publication_cmap(str(cmap)) if isinstance(cmap, str) else cmap
+        data = _lat_lon_last(data)
         data_min = float(np.nanmin(data.values))
         data_max = float(np.nanmax(data.values))
         colorbar_ticks = None
@@ -111,7 +114,7 @@ def plot_latlon_field(
             if data_min < 0.0 < data_max:
                 symmetric_limit = (
                     float(max(abs(levels[0]), abs(levels[-1])))
-                    if integer_colorbar
+                    if integer_colorbar and np.ndim(levels) > 0
                     else _symmetric_limit(data)
                 )
                 plot_kwargs["norm"] = TwoSlopeNorm(vmin=-symmetric_limit, vcenter=0.0, vmax=symmetric_limit)
@@ -135,7 +138,7 @@ def plot_latlon_field(
             if data_min < 0.0 < data_max:
                 symmetric_limit = (
                     float(max(abs(levels[0]), abs(levels[-1])))
-                    if integer_colorbar
+                    if integer_colorbar and np.ndim(levels) > 0
                     else _symmetric_limit(data)
                 )
                 plot_kwargs["norm"] = TwoSlopeNorm(vmin=-symmetric_limit, vcenter=0.0, vmax=symmetric_limit)
@@ -173,8 +176,11 @@ def plot_spatial_std_comparison(
     """Plot legacy-vs-CCKW time-standard-deviation maps."""
     with scientific_plot_style():
         use_cartopy = (ccrs is not None) if use_cartopy is None else use_cartopy
+        legacy_std, cckw_std = _lat_lon_last(legacy_std), _lat_lon_last(cckw_std)
         diff = legacy_std - cckw_std
         vmax = float(np.nanmax([legacy_std.max().item(), cckw_std.max().item()]))
+        if not np.isfinite(vmax) or vmax == 0.0:
+            vmax = 1.0
         dmax = float(np.nanmax(np.abs(diff.values)))
         if not np.isfinite(dmax) or dmax == 0.0:
             dmax = 1.0e-8
@@ -284,6 +290,7 @@ def plot_spatial_std_triptych(
     """Plot a projected OLR/U850/V850 standard-deviation triptych."""
     with scientific_plot_style():
         use_cartopy = (ccrs is not None) if use_cartopy is None else use_cartopy
+        olr_std, u_std, v_std = _lat_lon_last(olr_std), _lat_lon_last(u_std), _lat_lon_last(v_std)
         subplot_kwargs = {}
         if use_cartopy:
             projection, data_crs = _default_map_projection()
@@ -358,11 +365,18 @@ def plot_wave_spatial_comparison(
     integer_colorbar: bool = False,
     target_steps: int = 8,
     level_count: int = 19,
+    weak_signal_threshold: float | None = 0.1,
     save_path: str | Path | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
-    """Plot a grid comparing filtered spatial distributions across multiple waves."""
+    """Plot a grid comparing filtered spatial distributions across multiple waves.
+
+    A panel whose peak is below ``weak_signal_threshold`` (in the units of the fields) is annotated
+    "Weak signal at daily sampling"; pass ``None`` to switch the annotation off, for example for
+    fields in units where 0.1 is not small.
+    """
     if len(fields) != len(titles):
         raise ValueError("`fields` and `titles` must have the same length.")
+    fields = [_lat_lon_last(field) for field in fields]
 
     with scientific_plot_style():
         use_cartopy = (ccrs is not None) if use_cartopy is None else use_cartopy
@@ -398,6 +412,7 @@ def plot_wave_spatial_comparison(
         else:
             contour_levels = _filled_levels(0.0, vmax, count=level_count)
             colorbar_ticks = None
+        extend = _resolve_extend(None, fields, contour_levels)
         image = None
 
         for panel_index, (axis, field, title) in enumerate(zip(axes.flat, fields, titles)):
@@ -410,7 +425,7 @@ def plot_wave_spatial_comparison(
                 "vmin": 0.0,
                 "vmax": vmax,
                 "add_colorbar": False,
-                "extend": "neither",
+                "extend": extend,
             }
             if use_cartopy:
                 kwargs["transform"] = data_crs
@@ -424,7 +439,7 @@ def plot_wave_spatial_comparison(
             else:
                 _apply_axes_style(axis, grid=False)
             _add_panel_label(axis, chr(65 + panel_index))
-            if _is_weak_signal(field, threshold=0.1):
+            if weak_signal_threshold is not None and _is_weak_signal(field, threshold=weak_signal_threshold):
                 axis.text(
                     0.5,
                     0.5,
@@ -488,13 +503,18 @@ def plot_wind_diagnostics_panel(
     quiver_stride: int = 4,
     quiver_scale: float | None = 55.0,
     integer_colorbar: bool = True,
-    colorbar_extend: str = "neither",
+    colorbar_extend: str | None = None,
     use_cartopy: bool | None = None,
     save_path: str | Path | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
-    """Plot divergence and vorticity maps with wind vectors."""
+    """Plot divergence and vorticity maps with wind vectors.
+
+    ``colorbar_extend=None`` (default) extends the colorbars when values fall outside the scale.
+    """
     with scientific_plot_style():
         use_cartopy = (ccrs is not None) if use_cartopy is None else use_cartopy
+        divergence, vorticity = _lat_lon_last(divergence), _lat_lon_last(vorticity)
+        zonal_wind, meridional_wind = _lat_lon_last(zonal_wind), _lat_lon_last(meridional_wind)
         subplot_kwargs = {}
         if use_cartopy:
             projection, data_crs = _default_map_projection()
@@ -528,7 +548,7 @@ def plot_wind_diagnostics_panel(
                 "levels": contour_levels,
                 "norm": TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax),
                 "add_colorbar": False,
-                "extend": colorbar_extend,
+                "extend": _resolve_extend(colorbar_extend, field, contour_levels),
             }
             if use_cartopy:
                 kwargs["transform"] = data_crs
@@ -578,14 +598,18 @@ def plot_horizontal_structure(
     quiver_scale: float | None = 55.0,
     colorbar_orientation: str = "horizontal",
     integer_colorbar: bool = False,
-    colorbar_extend: str = "neither",
+    colorbar_extend: str | None = None,
     wind_overlay: str = "auto",
     use_cartopy: bool | None = None,
     save_path: str | Path | None = None,
 ) -> tuple[plt.Figure, plt.Axes]:
-    """Plot one horizontal structure map with OLR shading and wind vectors."""
+    """Plot one horizontal structure map with OLR shading and wind vectors.
+
+    ``colorbar_extend=None`` (default) extends the colorbar when values fall outside the scale.
+    """
     with scientific_plot_style():
         use_cartopy = (ccrs is not None) if use_cartopy is None else use_cartopy
+        olr_field, u_field, v_field = _lat_lon_last(olr_field), _lat_lon_last(u_field), _lat_lon_last(v_field)
         vmax = _symmetric_limit(olr_field)
         cmap = get_publication_cmap("olr_diverging")
         if integer_colorbar:
@@ -594,6 +618,7 @@ def plot_horizontal_structure(
         else:
             contour_levels = _filled_levels(-vmax, vmax)
             colorbar_ticks = None
+        extend = _resolve_extend(colorbar_extend, olr_field, contour_levels)
 
         if use_cartopy:
             projection, data_crs = _default_map_projection()
@@ -606,7 +631,7 @@ def plot_horizontal_structure(
                 levels=contour_levels,
                 norm=TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax),
                 add_colorbar=False,
-                extend=colorbar_extend,
+                extend=extend,
             )
             _set_map_extent_from_field(axis, olr_plot, data_crs)
             _add_map_guides(axis, draw_labels=True)
@@ -618,7 +643,7 @@ def plot_horizontal_structure(
                 levels=contour_levels,
                 norm=TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax),
                 add_colorbar=False,
-                extend=colorbar_extend,
+                extend=extend,
             )
             _apply_axes_style(axis, grid=False)
         _overlay_anomaly_contours(
@@ -688,11 +713,18 @@ def plot_wave_horizontal_structure_comparison(
     colorbar_orientation: str = "vertical",
     quiver_scale: float | None = 55.0,
     use_cartopy: bool | None = None,
+    weak_signal_threshold: float | None = 0.1,
     save_path: str | Path | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
-    """Compare lag-0 horizontal structures for multiple waves in one figure."""
+    """Compare lag-0 horizontal structures for multiple waves in one figure.
+
+    ``weak_signal_threshold`` works as in :func:`plot_wave_spatial_comparison`.
+    """
     if not (len(olr_fields) == len(zonal_winds) == len(meridional_winds) == len(titles)):
         raise ValueError("All input sequences must have the same length.")
+    olr_fields = [_lat_lon_last(field) for field in olr_fields]
+    zonal_winds = [_lat_lon_last(field) for field in zonal_winds]
+    meridional_winds = [_lat_lon_last(field) for field in meridional_winds]
 
     with scientific_plot_style():
         use_cartopy = (ccrs is not None) if use_cartopy is None else use_cartopy
@@ -713,6 +745,8 @@ def plot_wave_horizontal_structure_comparison(
         )
         axes = np.atleast_1d(axes).reshape(nrows, ncols)
         vmax = max(_symmetric_limit(field) for field in olr_fields)
+        shared_levels = _filled_levels(-vmax, vmax)
+        extend = _resolve_extend(None, olr_fields, shared_levels)
         image = None
         quiver_reference = _quiver_reference_value(
             xr.concat(list(zonal_winds), dim="panel"),
@@ -730,9 +764,10 @@ def plot_wave_horizontal_structure_comparison(
                     ax=axis,
                     transform=data_crs,
                     cmap=get_publication_cmap("olr_diverging"),
-                    levels=_filled_levels(-vmax, vmax),
+                    levels=shared_levels,
                     norm=TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax),
                     add_colorbar=False,
+                    extend=extend,
                 )
                 _set_map_extent_from_field(axis, plot_data, data_crs)
                 _add_map_guides(axis, draw_labels=True, label_left=col == 0, label_bottom=row == nrows - 1)
@@ -740,9 +775,10 @@ def plot_wave_horizontal_structure_comparison(
                 image = olr_field.plot.contourf(
                     ax=axis,
                     cmap=get_publication_cmap("olr_diverging"),
-                    levels=_filled_levels(-vmax, vmax),
+                    levels=shared_levels,
                     norm=TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax),
                     add_colorbar=False,
+                    extend=extend,
                 )
                 _apply_axes_style(axis, grid=False)
             _overlay_anomaly_contours(
@@ -764,7 +800,7 @@ def plot_wave_horizontal_structure_comparison(
             axis.set_xlabel("Longitude")
             axis.set_ylabel("Latitude")
             _add_panel_label(axis, chr(65 + panel_index))
-            if _is_weak_signal(olr_field, threshold=0.1):
+            if weak_signal_threshold is not None and _is_weak_signal(olr_field, threshold=weak_signal_threshold):
                 axis.text(
                     0.5,
                     0.5,
@@ -816,7 +852,7 @@ def plot_lagged_horizontal_structure(
     quiver_scale: float | None = 55.0,
     colorbar_orientation: str = "horizontal",
     integer_colorbar: bool = False,
-    colorbar_extend: str = "neither",
+    colorbar_extend: str | None = None,
     olr_quantile: float = 0.98,
     olr_level_count: int = 19,
     olr_range_scale: float = 1.0,
@@ -834,9 +870,15 @@ def plot_lagged_horizontal_structure(
     use_cartopy: bool | None = None,
     save_path: str | Path | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
-    """Plot lagged horizontal composites with OLR shading and low-level wind vectors."""
+    """Plot lagged horizontal composites with OLR shading and low-level wind vectors.
+
+    ``colorbar_extend=None`` (default) extends the shared colorbar when values fall outside the
+    scale (the scale spans ``olr_quantile`` of ``|OLR|``, so the strongest signals are painted with
+    the end colours instead of being left blank).
+    """
     with scientific_plot_style():
         use_cartopy = (ccrs is not None) if use_cartopy is None else use_cartopy
+        olr_lagged, u_lagged, v_lagged = _lat_lon_last(olr_lagged), _lat_lon_last(u_lagged), _lat_lon_last(v_lagged)
         if lags is None:
             lags = [int(value) for value in olr_lagged["lag"].values]
         lagged_olr = olr_lagged.sel(lag=list(lags))
@@ -861,6 +903,7 @@ def plot_lagged_horizontal_structure(
                 range_scale=olr_range_scale,
                 minimum_vmax=olr_min_vmax,
             )
+        extend = _resolve_extend(colorbar_extend, lagged_olr, olr_levels)
         n_panels = len(lags)
         nrows = int(np.ceil(n_panels / ncols))
 
@@ -905,7 +948,7 @@ def plot_lagged_horizontal_structure(
                     levels=olr_levels,
                     norm=TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax),
                     add_colorbar=False,
-                    extend=colorbar_extend,
+                    extend=extend,
                 )
                 _set_map_extent_from_field(axis, olr_plot, data_crs)
                 _add_map_guides(axis, draw_labels=True, label_left=col == 0, label_bottom=row == nrows - 1)
@@ -916,7 +959,7 @@ def plot_lagged_horizontal_structure(
                     levels=olr_levels,
                     norm=TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax),
                     add_colorbar=False,
-                    extend=colorbar_extend,
+                    extend=extend,
                 )
                 _apply_axes_style(axis, grid=False)
             _overlay_anomaly_contours(
@@ -1037,9 +1080,13 @@ def plot_wave_evolution_comparison(
     colorbar_orientation: str = "vertical",
     quiver_scale: float | None = 55.0,
     use_cartopy: bool | None = None,
+    weak_signal_threshold: float | None = 0.1,
     save_path: str | Path | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
-    """Compare OLR-wind horizontal evolution across multiple waves and lags."""
+    """Compare OLR-wind horizontal evolution across multiple waves and lags.
+
+    ``weak_signal_threshold`` works as in :func:`plot_wave_spatial_comparison`.
+    """
     if not (
         len(olr_lagged_fields)
         == len(zonal_lagged_fields)
@@ -1047,6 +1094,9 @@ def plot_wave_evolution_comparison(
         == len(wave_names)
     ):
         raise ValueError("All input sequences must have the same length.")
+    olr_lagged_fields = [_lat_lon_last(field) for field in olr_lagged_fields]
+    zonal_lagged_fields = [_lat_lon_last(field) for field in zonal_lagged_fields]
+    meridional_lagged_fields = [_lat_lon_last(field) for field in meridional_lagged_fields]
 
     with scientific_plot_style():
         use_cartopy = (ccrs is not None) if use_cartopy is None else use_cartopy
@@ -1066,6 +1116,8 @@ def plot_wave_evolution_comparison(
         )
         axes = np.atleast_2d(axes)
         vmax = max(_symmetric_limit(field.sel(lag=list(lags))) for field in olr_lagged_fields)
+        shared_levels = _filled_levels(-vmax, vmax)
+        extend = _resolve_extend(None, [field.sel(lag=list(lags)) for field in olr_lagged_fields], shared_levels)
         image = None
         quiver_reference = _quiver_reference_value(
             xr.concat(list(zonal_lagged_fields), dim="panel"),
@@ -1088,9 +1140,10 @@ def plot_wave_evolution_comparison(
                         ax=axis,
                         transform=data_crs,
                         cmap=get_publication_cmap("olr_diverging"),
-                        levels=_filled_levels(-vmax, vmax),
+                        levels=shared_levels,
                         norm=TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax),
                         add_colorbar=False,
+                        extend=extend,
                     )
                     _set_map_extent_from_field(axis, plot_data, data_crs)
                     _add_map_guides(axis, draw_labels=True, label_left=col == 0, label_bottom=row == nrows - 1)
@@ -1098,9 +1151,10 @@ def plot_wave_evolution_comparison(
                     image = olr_panel.plot.contourf(
                         ax=axis,
                         cmap=get_publication_cmap("olr_diverging"),
-                        levels=_filled_levels(-vmax, vmax),
+                        levels=shared_levels,
                         norm=TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax),
                         add_colorbar=False,
+                        extend=extend,
                     )
                     _apply_axes_style(axis, grid=False)
                 _overlay_anomaly_contours(
@@ -1123,7 +1177,7 @@ def plot_wave_evolution_comparison(
                 axis.set_xlabel("Longitude")
                 axis.set_ylabel("Latitude")
                 _add_panel_label(axis, chr(65 + row * ncols + col))
-                if _is_weak_signal(olr_panel, threshold=0.1):
+                if weak_signal_threshold is not None and _is_weak_signal(olr_panel, threshold=weak_signal_threshold):
                     axis.text(
                         0.5,
                         0.5,
