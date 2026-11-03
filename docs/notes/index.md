@@ -10,6 +10,7 @@
 | M04 | [Hovmoller、事件识别与滞后合成](method-04-hovmoller-composite.md) | 如何从事件角度看传播和空间结构演变 |
 | M05 | [EOF 模态与 PC 回归](method-05-eof-regression.md) | 如何提取主模态并诊断对应风场结构 |
 | M06 | [方差、季节循环与风场诊断](method-06-variance-wind-diagnostics.md) | 如何解释活跃度、方差贡献、散度和涡度 |
+| M07 | [Kelvin 波事件识别:对流/动力双通道](method-07-kelvin-event-identification.md) | 对流偏离赤道而风场对称时,如何识别 Kelvin 波事件并判断耦合 |
 
 ## 类型
 

@@ -52,6 +52,7 @@ nav:
       - M04 Hovmoller 与合成: notes/method-04-hovmoller-composite.md
       - M05 EOF 与 PC 回归: notes/method-05-eof-regression.md
       - M06 方差与风场诊断: notes/method-06-variance-wind-diagnostics.md
+      - M07 Kelvin 波事件识别(对流/动力双通道): notes/method-07-kelvin-event-identification.md
       - 笔记模板: notes/research-note-template.md
       - 项目结构: structure.md
       - 迁移说明: migration.md

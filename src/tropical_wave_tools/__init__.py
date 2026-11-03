@@ -141,6 +141,23 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "vertical_eof_with_nan_handling": ("tropical_wave_tools.eof", "vertical_eof_with_nan_handling"),
     "relative_vorticity": ("tropical_wave_tools.diagnostics", "relative_vorticity"),
     "zonal_mean": ("tropical_wave_tools.diagnostics", "zonal_mean"),
+    "KelvinEventCatalog": ("tropical_wave_tools.kelvin_events", "KelvinEventCatalog"),
+    "KelvinEventConfig": ("tropical_wave_tools.kelvin_events", "KelvinEventConfig"),
+    "convective_axis_latitude": ("tropical_wave_tools.kelvin_events", "convective_axis_latitude"),
+    "convective_kelvin_index": ("tropical_wave_tools.kelvin_events", "convective_kelvin_index"),
+    "detect_propagating_ridges": ("tropical_wave_tools.kelvin_events", "detect_propagating_ridges"),
+    "equatorial_symmetry_index": ("tropical_wave_tools.kelvin_events", "equatorial_symmetry_index"),
+    "event_composite": ("tropical_wave_tools.kelvin_events", "event_composite"),
+    "event_count_sensitivity": ("tropical_wave_tools.kelvin_events", "event_count_sensitivity"),
+    "fixed_band_convective_index": ("tropical_wave_tools.kelvin_events", "fixed_band_convective_index"),
+    "identify_kelvin_events": ("tropical_wave_tools.kelvin_events", "identify_kelvin_events"),
+    "kelvin_band_filter": ("tropical_wave_tools.kelvin_events", "kelvin_band_filter"),
+    "kelvin_dynamical_index": ("tropical_wave_tools.kelvin_events", "kelvin_dynamical_index"),
+    "kelvin_meridional_structure": ("tropical_wave_tools.kelvin_events", "kelvin_meridional_structure"),
+    "project_onto_kelvin": ("tropical_wave_tools.kelvin_events", "project_onto_kelvin"),
+    "symmetric_antisymmetric": ("tropical_wave_tools.kelvin_events", "symmetric_antisymmetric"),
+    "make_synthetic_kelvin_case": ("tropical_wave_tools.synthetic", "make_synthetic_kelvin_case"),
+    "SyntheticEvent": ("tropical_wave_tools.synthetic", "SyntheticEvent"),
 }
 
 __all__ = ["__version__", *_LAZY_IMPORTS.keys()]

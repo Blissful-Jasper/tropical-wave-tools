@@ -107,6 +107,24 @@ tropical-wave-tools filter-wave \
   --output outputs/kelvin_filtered.nc
 ```
 
+## Kelvin Event Identification
+
+对流(OLR)与动力(风场/位势高度)两个通道分别识别 Kelvin 波事件,再判断耦合。对流通道沿随时间变化的对流轴纬度取样,适用于太平洋上对流偏离赤道、风场近似对称的情形。详见 `docs/notes/method-07-kelvin-event-identification.md`。
+
+```python
+import tropical_wave_tools as twt
+
+catalog = twt.identify_kelvin_events(u=u850, z=z850, v=v850, olr=olr)
+catalog.events      # kind = coupled / dynamical_only / convective_only
+```
+
+```bash
+tropical-wave-tools kelvin-events --olr olr.nc --u u850.nc --z z850.nc --output-dir outputs/kelvin
+PYTHONPATH=src python examples/kelvin_event_demo.py   # 合成示例
+```
+
+默认阈值只在合成数据上验证过,真实再分析数据请先做阈值敏感性检验。
+
 ## Notes
 
 ```bash

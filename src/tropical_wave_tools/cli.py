@@ -137,6 +137,34 @@ def build_parser() -> argparse.ArgumentParser:
     atlas_parser.add_argument("--n-harm", type=int, default=3, help="Annual-cycle harmonics removed before filtering.")
     atlas_parser.add_argument("--n-workers", type=int, default=4, help="CCKW worker count.")
 
+
+    kelvin_parser = subparsers.add_parser(
+        "kelvin-events",
+        help="Identify Kelvin-wave events from wind (dynamical) and OLR (convective) channels.",
+    )
+    kelvin_parser.add_argument("--olr", default=None, help="OLR NetCDF file (convective channel).")
+    kelvin_parser.add_argument("--olr-var", default="olr", help="OLR variable name.")
+    kelvin_parser.add_argument("--u", default=None, help="Zonal-wind NetCDF file (dynamical channel).")
+    kelvin_parser.add_argument("--u-var", default="u", help="Zonal-wind variable name.")
+    kelvin_parser.add_argument("--z", default=None, help="Optional geopotential-height file (exact Matsuno projection).")
+    kelvin_parser.add_argument("--z-var", default="z", help="Geopotential-height variable name (metres).")
+    kelvin_parser.add_argument("--v", default=None, help="Optional meridional-wind file (v/u diagnostic only).")
+    kelvin_parser.add_argument("--v-var", default="v", help="Meridional-wind variable name.")
+    kelvin_parser.add_argument("--time-start", default=None, help="Start date.")
+    kelvin_parser.add_argument("--time-end", default=None, help="End date.")
+    kelvin_parser.add_argument("--lat-min", type=float, default=-20.0, help="Minimum latitude (keep symmetric about 0).")
+    kelvin_parser.add_argument("--lat-max", type=float, default=20.0, help="Maximum latitude.")
+    kelvin_parser.add_argument("--spd", type=int, default=1, help="Samples per day.")
+    kelvin_parser.add_argument("--n-harm", type=int, default=3, help="Annual-cycle harmonics removed before filtering.")
+    kelvin_parser.add_argument("--depth", type=float, default=25.0, help="Projection equivalent depth (m).")
+    kelvin_parser.add_argument("--peak-sigma", type=float, default=1.5, help="Peak threshold in standard deviations.")
+    kelvin_parser.add_argument("--continue-sigma", type=float, default=0.75, help="Track-continuation threshold in standard deviations.")
+    kelvin_parser.add_argument("--dyn-min-amplitude", type=float, default=None, help="Absolute minimum dynamical amplitude (m/s).")
+    kelvin_parser.add_argument("--conv-min-amplitude", type=float, default=None, help="Absolute minimum convective amplitude (W m-2).")
+    kelvin_parser.add_argument("--axis-lat-min", type=float, default=-15.0, help="Southern bound of the convective-axis search.")
+    kelvin_parser.add_argument("--axis-lat-max", type=float, default=20.0, help="Northern bound of the convective-axis search.")
+    kelvin_parser.add_argument("--output-dir", required=True, help="Output directory (events.csv, tracks.csv, indices.nc).")
+
     return parser
 
 
@@ -240,6 +268,41 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             n_workers=args.n_workers,
         )
         print(summary.to_string(index=False))
+        return 0
+
+    if args.command == "kelvin-events":
+        from tropical_wave_tools.kelvin_events import KelvinEventConfig, identify_kelvin_events
+
+        if args.olr is None and args.u is None:
+            parser.error("kelvin-events needs --olr and/or --u.")
+        time_range = _resolve_time_range(args.time_start, args.time_end)
+        lat_range = (args.lat_min, args.lat_max)
+
+        def _load(path: Optional[str], variable: str):
+            if path is None:
+                return None
+            return load_dataarray(path, variable=variable, lat_range=lat_range, time_range=time_range)
+
+        config = KelvinEventConfig(
+            obs_per_day=args.spd,
+            n_harm=args.n_harm,
+            projection_depth=args.depth,
+            peak_sigma=args.peak_sigma,
+            continue_sigma=args.continue_sigma,
+            dyn_min_amplitude=args.dyn_min_amplitude,
+            conv_min_amplitude=args.conv_min_amplitude,
+            axis_lat_range=(args.axis_lat_min, args.axis_lat_max),
+        )
+        catalog = identify_kelvin_events(
+            u=_load(args.u, args.u_var),
+            z=_load(args.z, args.z_var),
+            v=_load(args.v, args.v_var),
+            olr=_load(args.olr, args.olr_var),
+            config=config,
+        )
+        output_dir = catalog.save(args.output_dir)
+        print(f"Kelvin events written to: {output_dir}")
+        print(catalog.summary().to_string())
         return 0
 
     parser.error(f"Unknown command: {args.command}")
