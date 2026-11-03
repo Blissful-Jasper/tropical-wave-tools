@@ -170,7 +170,7 @@ def build_parser() -> argparse.ArgumentParser:
     kelvin_parser.add_argument("--continue-sigma", type=float, default=0.75, help="Track-continuation threshold in standard deviations.")
     kelvin_parser.add_argument("--dyn-min-amplitude", type=float, default=None, help="Absolute minimum dynamical amplitude (m/s).")
     kelvin_parser.add_argument("--conv-min-amplitude", type=float, default=None, help="Absolute minimum convective amplitude (W m-2).")
-    kelvin_parser.add_argument("--axis-lat-min", type=float, default=-15.0, help="Southern bound of the convective-axis search.")
+    kelvin_parser.add_argument("--axis-lat-min", type=float, default=-15.0, help="Southern bound of the convective-axis search (sampling only; widen it, do not assume a hemisphere).")
     kelvin_parser.add_argument("--axis-lat-max", type=float, default=20.0, help="Northern bound of the convective-axis search.")
     kelvin_parser.add_argument("--output-dir", required=True, help="Output directory (events.csv, tracks.csv, indices.nc).")
 
@@ -329,6 +329,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(result.catalog.summary().to_string())
         if not result.summary.empty:
             print(result.summary.round(2).to_string(index=False))
+        if result.structure is not None and not result.structure.empty:
+            print("\nConvective meridional-structure classes:")
+            print(result.structure.round(2).to_string(index=False))
         return 0
 
     parser.error(f"Unknown command: {args.command}")

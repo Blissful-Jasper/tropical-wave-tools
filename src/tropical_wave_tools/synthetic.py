@@ -53,6 +53,10 @@ class SyntheticEvent:
     sigma_t: float = 3.5
     sigma_x: float = 35.0
     conv_offset_deg: float = 0.0
+    conv_lat: Optional[float] = None
+    """Latitude of this event's convection; ``None`` uses the case-level ``conv_lat``."""
+    conv_pair: bool = False
+    """Put convection at both ``+conv_lat`` and ``-conv_lat`` (a double-ITCZ-like pair)."""
 
 
 def _wrapped(delta_deg: np.ndarray) -> np.ndarray:
@@ -102,7 +106,6 @@ def make_synthetic_kelvin_case(
     ld = np.sqrt(c / (2.0 * EARTH_OMEGA / EARTH_RADIUS))
     yy = _M_PER_DEG * y
     psi0 = np.exp(-0.5 * (yy / ld) ** 2)
-    conv_env = np.exp(-0.5 * ((y - conv_lat) / conv_sigma_lat) ** 2)
 
     u = rng.normal(0.0, noise_u, (ntime, lat.size, lon.size))
     olr = rng.normal(0.0, noise_olr, (ntime, lat.size, lon.size))
@@ -118,7 +121,11 @@ def make_synthetic_kelvin_case(
 
     for ev in events:
         u += ev.u_amp * packet(ev) * psi0
-        olr += -ev.olr_amp * packet(ev, ev.conv_offset_deg) * conv_env
+        centre_lat = conv_lat if ev.conv_lat is None else ev.conv_lat
+        env = np.exp(-0.5 * ((y - centre_lat) / conv_sigma_lat) ** 2)
+        if ev.conv_pair:
+            env = env + np.exp(-0.5 * ((y + centre_lat) / conv_sigma_lat) ** 2)
+        olr += -ev.olr_amp * packet(ev, ev.conv_offset_deg) * env
 
     if add_distractors:
         west = SyntheticEvent(t0_day=70.0, lon0=250.0, speed=-6.0, u_amp=4.0, wavenumber=5, sigma_t=6.0)

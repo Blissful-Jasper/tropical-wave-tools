@@ -207,11 +207,10 @@ PYTHONPATH=src python examples/kelvin_event_demo.py docs/assets/kelvin_events_de
 ```bash
 tropical-wave-tools kelvin-events \
   --u era5_u850.nc --z era5_z850.nc --v era5_v850.nc \
-  --olr olr.day.mean.nc \
+  --olr olr.day.mean.nc --olr-var olr \
   --level 850 --regrid-deg 2.5 --z-geopotential \
   --time-start 2000-01-01 --time-end 2020-12-31 --buffer-days 30 \
   --region-lon 120 280 \
-  --axis-lat-min 0 --axis-lat-max 15 \
   --dyn-min-amplitude 1.0 --conv-min-amplitude 8 \
   --output-dir outputs/kelvin_pacific
 ```
@@ -219,20 +218,64 @@ tropical-wave-tools kelvin-events \
 要点:
 
 - 窗口两端各多读 `--buffer-days` 天,事件按 `peak_time` 再裁回 2000–2020,避免滤波边缘效应。
-- `--axis-lat-min 0 --axis-lat-max 15` 把对流轴限定在 ITCZ 一支,防止在西太平洋与 SPCZ(南半球)之间跳变;如果你要看南半球对流,改成 `-15 20` 并检查 `conv_axis_lat` 的分布。
+- **不要把 `--axis-lat-min` 设成 0。** 早先版本建议过这个设置,但它会让南侧对流的波被误判为 `dynamical_only`,并且把 `conv_axis_lat` 报成北纬(见下节"偏差检验")。默认的 `-15 20` 更安全;事件的对流纬度请看 `conv_peak_lat`,不要看 `conv_axis_lat`。
+- **NOAA 插值 OLR**:2.5° 日平均、全球经度,不需要 `--regrid-deg` 也不需要 `--olr-factor`;ERA5 风场用 `--regrid-deg 2.5` 之后两者就在同一网格上。网格或经纬度不一致会直接报错,时间取公共时段。OLR 中的缺测会按 0 异常处理(只影响很少的格点)。
+- **降水**:同一流程也能用降水(如 GPCP、IMERG)。降水大值对应强对流,与 OLR 符号相反,传入时加 `--olr-factor -1`,此时 `--conv-min-amplitude` 的单位是 mm/day,阈值要重新选。
 - 阈值请先看敏感性:`event_count_sensitivity(catalog.indices["kelvin_dynamical"])`。`--dyn-min-amplitude 1.0`、`--conv-min-amplitude 8` 只是起点,不是经过检验的推荐值。
 
-输出:`events.csv`、`tracks.csv`、`indices.nc`、`summary.csv`(按 kind × 季节的事件数、中位速度、中位 `conv_axis_lat`、`u_symmetry_index`、`v_to_u_ratio`、轴/固定带峰值比),以及 `kelvin_region_report.png`(`u`、`v`、`-OLR` 随波合成图,峰值剖面,对流轴纬度与 `u` 对称指数分布)。
+输出:`events.csv`、`tracks.csv`、`indices.nc`、`summary.csv`(按 kind × 季节的事件数、中位速度、中位 `conv_axis_lat`、`u_symmetry_index`、`v_to_u_ratio`、轴/固定带峰值比),`structure_summary.csv`、`conv_profiles.csv`,以及 `kelvin_region_report.png`(`u`、`v`、`-OLR` 随波合成图,峰值剖面,对流峰值纬度与 `u` 对称指数分布)和 `kelvin_structure_report.png`(见下节)。
 
 **读结果时回答你的问题:**
 
-1. `coupled` 事件的 `median_conv_axis_lat` 是否明显大于 0?
+1. `coupled` 事件的 `median_conv_peak_lat` 是否明显大于 0,`structure_summary.csv` 里 `frac_northern` 是多少?
 2. 同一批事件的 `median_u_symmetry_index` 是否接近 1?
 3. `median_v_to_u_ratio` 是否很小?如果不小,说明 `v` 并不对称/并非纯 Kelvin,风场"对称"只对 `u`、`z` 成立。
 4. `median_peak_ratio_axis_over_fixed` 是否明显大于 1?这是固定赤道带少看到多少对流的直接度量。
 5. 分季节看(DJF/JJA),ITCZ 位置随季节变,结论可能不同。
 
 合成数据的压力测试(21 年日数据、2.5°、17 个纬度、150 个注入事件):约 34 秒、峰值内存约 2.6 GB。
+
+## 对流是否"都在赤道以北"?事件级结构诊断
+
+**不能用 `conv_axis_lat` 回答这个问题。** 它是周围 91 天里 Kelvin 带 OLR 方差最大处的纬度,用来决定在哪里取样,受 `axis_lat_range` 限制,不是对某个事件的测量。对流轴指数是以该纬度为中心的高斯,也天然适合偏离赤道的单峰,对赤道上的对称对流和镜像双峰没有诊断能力。
+
+所以每个事件另外计算一个**不依赖任何纬度假设**的对流经向剖面:
+
+1. 用 ±`structure_lat_max`(默认 15°)宽带平均的 `-OLR_K` 找出风场脊与对流之间的经度偏移(宽带指数不含纬度假设);
+2. 沿事件路径取各纬度的 `-OLR_K`,按风场脊的强度加权平均,得到该事件的剖面(`catalog.conv_profiles`);
+3. 从剖面算出:
+
+| 字段 | 含义 |
+|---|---|
+| `conv_peak_lat` | 剖面峰值纬度(抛物线插值) |
+| `conv_symmetry_index` | 关于赤道的对称指数,+1 为完全对称(只用增强对流的正值部分) |
+| `conv_nh_fraction` | 北半球占增强对流能量的份额(0.5 为南北均分) |
+| `conv_eq_fraction` | ±5° 内的能量占比 |
+| `struct_peak` | 剖面峰值(`-OLR_K` 单位) |
+| `conv_structure` | 分类,见下 |
+
+分类规则(启发式,阈值在 `KelvinEventConfig` 的 `structure_*` 参数里,请看分布而不要只看类别):
+
+- `weak`:剖面峰值 < `structure_min_peak`(默认 3 W m⁻²),没有清晰的对流信号;
+- `equatorial`:对称指数 ≥ 0.5 且峰值在赤道 ±5° 内;
+- `symmetric_off_equator`:对称指数 ≥ 0.5 但峰值离赤道较远,即镜像双峰(类似双 ITCZ);
+- `northern` / `southern`:不对称,按半球能量份额分。
+
+`run_regional_workflow` 和 CLI 会输出 `structure_summary.csv`(按 kind × 季节的各类数量与占比)、`conv_profiles.csv`,以及 `kelvin_structure_report.png`(逐事件剖面热图、峰值纬度直方图、风场对称性对比对流对称性的散点、分季节的类别占比)。
+
+**读法**:如果太平洋 Kelvin 波的对流"全部偏北",应当看到 `frac_northern` 接近 1、`conv_peak_lat` 集中在正值,并且 `conv_symmetry_index` 普遍很低;只要有可观的 `equatorial`、`symmetric_off_equator` 或 `southern` 比例,就说明不是全部偏北。同时对照 `u_symmetry_index` 和 `v_to_u_ratio`,判断风场是否同样对称。
+
+### 偏差检验(合成数据)
+
+用上一版建议的 `axis_lat_range=(0, 15)` 在合成数据里注入了南侧对流(−8°)的波:旧版判据把它判成 `dynamical_only`(`p=0.63`),并报告 `conv_axis_lat=+8.8`。现在 `coupled` 取"轴指数或宽带指数任一通过",该事件为 `coupled`,结构诊断给出 `conv_peak_lat=-8.2`、`southern`。
+
+21 年日数据规模的合成数据里随机注入 160 个事件(北 40%、赤道 20%、南 20%、对称双峰 20%,对流经度偏移随机),识别出 136 个动力事件(`coupled` 129、`dynamical_only` 7),结构分类的结果:
+
+- 非弱信号事件总体准确率约 95%;
+- 孤立事件(10 天、60° 内没有别的注入波)准确率约 98%;
+- 9 个错分里有 7 个出现在多个波时空重叠的情形,剖面被混合;其余 2 个是信噪比低的孤立事件。
+
+这些数字依赖合成设定(对流宽度 3°、振幅、噪声水平),**不代表真实资料中的准确率**。真实 OLR 的 Kelvin 带对流常常是几个云团的混合,剖面更宽、更不规则,分类阈值很可能需要调整。
 
 ## 参数建议
 

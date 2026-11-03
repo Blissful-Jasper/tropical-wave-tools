@@ -140,8 +140,16 @@ def test_pacific_workflow_end_to_end(era5_files, tmp_path) -> None:
     assert result.figure is not None and result.figure.exists() and result.figure.stat().st_size > 10_000
     assert {"u", "z", "v", "olr"} == set(result.filtered)
 
+    assert result.structure_figure is not None and result.structure_figure.exists()
+    assert (tmp_path / "out" / "structure_summary.csv").exists()
+    assert (tmp_path / "out" / "conv_profiles.csv").exists()
+    structure = result.structure
+    all_row = structure[(structure["kind"] == "coupled") & (structure["season"] == "ALL")].iloc[0]
+    assert all_row["n"] == 2 and all_row["n_northern"] == 2 and all_row["frac_northern"] == 1.0
+
     summary = result.summary
     row = summary[(summary["kind"] == "coupled") & (summary["season"] == "ALL")].iloc[0]
+    assert row["median_conv_peak_lat"] == pytest.approx(8.0, abs=1.5)
     assert row["n"] == 2
     assert row["median_conv_axis_lat"] == pytest.approx(8.0, abs=1.5)
     assert row["median_peak_ratio_axis_over_fixed"] > 1.8
@@ -178,3 +186,21 @@ def test_cli_era5_style_run(era5_files, tmp_path, capsys) -> None:
     events = pd.read_csv(tmp_path / "cli" / "events.csv")
     assert len(events) == 2 and (events["kind"] == "coupled").all()
     assert "coupled" in capsys.readouterr().out
+
+
+def test_structure_summary_reports_mixed_classes() -> None:
+    from tropical_wave_tools.kelvin_workflow import STRUCTURE_CLASSES, structure_summary
+
+    events = pd.DataFrame(
+        {
+            "kind": ["coupled"] * 4,
+            "peak_time": pd.to_datetime(["2000-01-05", "2000-01-20", "2000-07-05", "2000-07-09"]),
+            "conv_structure": ["northern", "equatorial", "southern", "northern"],
+        }
+    )
+    table = structure_summary(events)
+    assert structure_summary(pd.DataFrame()).empty
+    total = table[(table["season"] == "ALL")].iloc[0]
+    assert total["n"] == 4 and total["n_northern"] == 2 and total["frac_equatorial"] == 0.25
+    djf = table[table["season"] == "DJF"].iloc[0]
+    assert djf["n"] == 2 and sum(djf[f"n_{c}"] for c in STRUCTURE_CLASSES) == 2

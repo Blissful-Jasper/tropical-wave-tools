@@ -373,3 +373,91 @@ def test_window_selection_by_peak_time(catalog) -> None:
     assert len(only_first.events) == 1
     assert only_first.events["start_time"].iloc[0] < pd.Timestamp("2000-03-01")
     assert catalog.in_window("2001-01-01", "2001-12-31").events.empty
+
+
+# --------------------------------------------------------------------------- #
+# Event-level meridional structure of the convective signal
+# --------------------------------------------------------------------------- #
+STRUCTURE_EVENTS = [
+    SyntheticEvent(30, 130, conv_lat=8.0),
+    SyntheticEvent(90, 200, conv_lat=0.0),
+    SyntheticEvent(150, 100, conv_lat=-8.0),
+    SyntheticEvent(210, 220, conv_lat=8.0, conv_pair=True),
+]
+
+
+@pytest.fixture(scope="module")
+def structure_case() -> xr.Dataset:
+    return make_synthetic_kelvin_case(events=STRUCTURE_EVENTS, ntime=250, add_distractors=False, seed=2)
+
+
+@pytest.mark.parametrize("axis_range", [(-15.0, 20.0), (0.0, 15.0)])
+def test_structure_classes_follow_the_injected_convection(structure_case, axis_range) -> None:
+    """North, equatorial, south and mirror-pair convection are told apart, whatever axis range is set."""
+    from dataclasses import replace
+
+    cfg = replace(SYNTHETIC_CONFIG, axis_lat_range=axis_range)
+    result = identify_kelvin_events(u=structure_case.u, z=structure_case.z, olr=structure_case.olr, config=cfg)
+    events = result.events.sort_values("start_time").reset_index(drop=True)
+    assert events["conv_structure"].tolist() == ["northern", "equatorial", "southern", "symmetric_off_equator"]
+    assert events.loc[0, "conv_peak_lat"] == pytest.approx(8.0, abs=1.5)
+    assert abs(events.loc[1, "conv_peak_lat"]) < 1.5
+    assert events.loc[2, "conv_peak_lat"] == pytest.approx(-8.0, abs=1.5)
+    assert abs(events.loc[3, "conv_peak_lat"]) == pytest.approx(8.0, abs=1.5)
+    assert events.loc[0, "conv_nh_fraction"] > 0.9 and events.loc[2, "conv_nh_fraction"] < 0.1
+    assert events.loc[1, "conv_symmetry_index"] > 0.9 and events.loc[3, "conv_symmetry_index"] > 0.9
+    assert events.loc[1, "conv_eq_fraction"] > 0.9 and events.loc[3, "conv_eq_fraction"] < 0.5
+
+
+def test_axis_range_cannot_turn_a_southern_wave_into_a_dry_one(structure_case) -> None:
+    """With the axis limited to the north the southern-convection wave must still be coupled."""
+    from dataclasses import replace
+
+    cfg = replace(SYNTHETIC_CONFIG, axis_lat_range=(0.0, 15.0))
+    result = identify_kelvin_events(u=structure_case.u, z=structure_case.z, olr=structure_case.olr, config=cfg)
+    events = result.events.sort_values("start_time").reset_index(drop=True)
+    assert (events["kind"] == "coupled").all()
+    south = events.loc[2]
+    assert south["coupling_pvalue_wide"] <= 0.05  # carried by the latitude-free index
+    assert south["conv_peak_lat"] < -5.0  # the structure diagnostic is not fooled by the axis
+
+
+def test_profiles_are_attached_and_follow_subsetting(structure_case) -> None:
+    result = identify_kelvin_events(
+        u=structure_case.u, z=structure_case.z, olr=structure_case.olr, config=SYNTHETIC_CONFIG
+    )
+    profiles = result.conv_profiles
+    assert profiles is not None and profiles.dims == ("event_id", "lat")
+    assert set(profiles.event_id.values) == set(result.events["event_id"])
+    assert float(profiles.lat.max()) <= 15.0
+    subset = result.in_window("2000-01-01", "2000-04-30")
+    assert set(subset.conv_profiles.event_id.values) == set(subset.events["event_id"])
+    assert result.indices["kelvin_convective_wide_band"].dims == ("time", "lon")
+
+
+def test_profile_metrics_weak_and_hemisphere_rules() -> None:
+    from tropical_wave_tools.kelvin_events import _profile_metrics
+
+    lat = np.arange(-15.0, 15.1, 2.5)
+    cfg = KelvinEventConfig()
+    bump = lambda centre: 6.0 * np.exp(-0.5 * ((lat - centre) / 3.0) ** 2)
+    assert _profile_metrics(0.4 * bump(8.0), lat, cfg)["conv_structure"] == "weak"
+    assert _profile_metrics(bump(8.0), lat, cfg)["conv_structure"] == "northern"
+    assert _profile_metrics(bump(-8.0), lat, cfg)["conv_structure"] == "southern"
+    assert _profile_metrics(bump(0.0), lat, cfg)["conv_structure"] == "equatorial"
+    assert _profile_metrics(np.zeros_like(lat), lat, cfg)["conv_structure"] == "weak"
+
+
+def test_mismatched_grids_fail_loudly(case) -> None:
+    other = case.olr.isel(lat=slice(0, -2))
+    with pytest.raises(ValueError, match="different lat grids"):
+        identify_kelvin_events(u=case.u, olr=other, config=SYNTHETIC_CONFIG)
+    shifted = case.olr.assign_coords(lon=case.olr.lon + 1.25)
+    with pytest.raises(ValueError, match="different lon grids"):
+        identify_kelvin_events(u=case.u, olr=shifted, config=SYNTHETIC_CONFIG)
+
+
+def test_inputs_are_reduced_to_the_common_period(case) -> None:
+    shorter_olr = case.olr.isel(time=slice(0, 120))
+    result = identify_kelvin_events(u=case.u, z=case.z, olr=shorter_olr, config=SYNTHETIC_CONFIG)
+    assert result.indices["kelvin_dynamical"].sizes["time"] == 120

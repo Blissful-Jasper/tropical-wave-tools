@@ -122,6 +122,16 @@ class KelvinEventConfig:
     symmetry_window_deg: float = 20.0
     symmetry_lat_max: float = 15.0
 
+    # --- event-level meridional structure of the convective signal ----------
+    structure_lat_max: float = 15.0
+    """Latitude band (+/-) of the per-event OLR profile.  Independent of ``axis_lat_range``."""
+    structure_min_peak: float = 3.0
+    """Profiles whose peak (``-OLR_K`` units) is below this are classed ``weak``."""
+    structure_symmetric_threshold: float = 0.5
+    """Symmetry index at or above which a profile is called equatorially symmetric."""
+    structure_eq_halfwidth: float = 5.0
+    """A symmetric profile peaking within this many degrees of the equator is ``equatorial``."""
+
 
 @dataclass
 class KelvinEventCatalog:
@@ -131,6 +141,17 @@ class KelvinEventCatalog:
     tracks: pd.DataFrame
     indices: xr.Dataset
     config: KelvinEventConfig = field(default_factory=KelvinEventConfig)
+    conv_profiles: Optional[xr.DataArray] = None
+    """``(event_id, lat)`` wave-following mean of ``-OLR_K`` along each event's path."""
+
+    def _subset(self, events: pd.DataFrame, tracks: pd.DataFrame) -> "KelvinEventCatalog":
+        profiles = self.conv_profiles
+        if profiles is not None:
+            keep = [i for i in events["event_id"] if i in set(profiles.event_id.values)]
+            profiles = profiles.sel(event_id=keep)
+        return KelvinEventCatalog(
+            events=events, tracks=tracks, indices=self.indices, config=self.config, conv_profiles=profiles
+        )
 
     def summary(self) -> pd.Series:
         """Return the number of events of each ``kind``."""
@@ -146,7 +167,7 @@ class KelvinEventCatalog:
         that wrap through 0 deg, such as ``(300, 60)``, are supported.
         """
         events, tracks = select_events_in_region(self.events, self.tracks, lon_range, min_points=min_points)
-        return KelvinEventCatalog(events=events, tracks=tracks, indices=self.indices, config=self.config)
+        return self._subset(events, tracks)
 
     def in_window(self, start: "str | pd.Timestamp", end: "str | pd.Timestamp") -> "KelvinEventCatalog":
         """Keep events whose ``peak_time`` lies in ``[start, end]`` (use to drop padding/edge periods)."""
@@ -156,7 +177,7 @@ class KelvinEventCatalog:
         keep = (peak >= pd.Timestamp(start)) & (peak <= pd.Timestamp(end))
         events = self.events[keep].reset_index(drop=True)
         tracks = _tracks_of_events(events, self.tracks)
-        return KelvinEventCatalog(events=events, tracks=tracks, indices=self.indices, config=self.config)
+        return self._subset(events, tracks)
 
     def save(self, directory: "str | Path") -> Path:
         """Write ``events.csv``, ``tracks.csv`` and (if possible) ``indices.nc``."""
@@ -164,6 +185,8 @@ class KelvinEventCatalog:
         out.mkdir(parents=True, exist_ok=True)
         self.events.to_csv(out / "events.csv", index=False)
         self.tracks.to_csv(out / "tracks.csv", index=False)
+        if self.conv_profiles is not None:
+            self.conv_profiles.to_pandas().to_csv(out / "conv_profiles.csv")
         # Writing NetCDF needs an optional backend; the CSV outputs are the primary product.
         with contextlib.suppress(ImportError, ValueError, RuntimeError):
             self.indices.to_netcdf(out / "indices.nc")
@@ -883,6 +906,96 @@ def _coupling(
     return r_best, float(shifts[k_best] * dlon), p_value, t_idx, j0
 
 
+def _passes(corr: float, pvalue: float, cfg: KelvinEventConfig) -> bool:
+    return bool(
+        np.isfinite(corr) and np.isfinite(pvalue) and corr >= cfg.coupling_threshold and pvalue <= cfg.coupling_alpha
+    )
+
+
+def _profile_metrics(profile: np.ndarray, lat: np.ndarray, cfg: KelvinEventConfig) -> Dict[str, object]:
+    """Peak latitude, symmetry, hemispheric split and class of a meridional ``-OLR_K`` profile.
+
+    Only the enhanced-convection part (positive values) enters the energies.
+    Classes: ``weak`` (no clear signal), ``equatorial`` (symmetric, peak near
+    the equator), ``symmetric_off_equator`` (mirror pair, e.g. a double ITCZ),
+    ``northern`` and ``southern`` (asymmetric, by hemispheric energy share).
+    """
+    p = np.where(np.isfinite(profile), profile, 0.0)
+    pos = np.clip(p, 0.0, None)
+    energy = pos**2
+    total = float(energy.sum())
+    i = int(np.argmax(p))
+    peak = float(p[i])
+    peak_lat = float(lat[i])
+    if 0 < i < p.size - 1:
+        denom = p[i - 1] - 2.0 * p[i] + p[i + 1]
+        if denom < 0.0:
+            peak_lat += float(0.5 * (p[i - 1] - p[i + 1]) / denom * np.mean(np.diff(lat)))
+    out: Dict[str, object] = {
+        "struct_peak": peak,
+        "conv_peak_lat": peak_lat,
+        "conv_symmetry_index": np.nan,
+        "conv_eq_fraction": np.nan,
+        "conv_nh_fraction": np.nan,
+        "conv_structure": "weak",
+    }
+    if total <= 0.0:
+        return out
+    out["conv_eq_fraction"] = float(energy[np.abs(lat) <= cfg.structure_eq_halfwidth].sum() / total)
+    out["conv_nh_fraction"] = float((energy[lat > 0].sum() + 0.5 * energy[lat == 0].sum()) / total)
+    if np.allclose(lat, -lat[::-1], atol=1.0e-3):
+        mirror = pos[::-1]
+        e_sym = float((((pos + mirror) / 2.0) ** 2).sum())
+        e_asym = float((((pos - mirror) / 2.0) ** 2).sum())
+        out["conv_symmetry_index"] = (e_sym - e_asym) / (e_sym + e_asym)
+    if peak < cfg.structure_min_peak:
+        return out
+    sym = out["conv_symmetry_index"]
+    if np.isfinite(sym) and sym >= cfg.structure_symmetric_threshold:
+        out["conv_structure"] = "equatorial" if abs(peak_lat) <= cfg.structure_eq_halfwidth else "symmetric_off_equator"
+    else:
+        out["conv_structure"] = "northern" if out["conv_nh_fraction"] >= 0.5 else "southern"
+    return out
+
+
+def _convective_structure(
+    event: pd.Series,
+    x_values: np.ndarray,
+    c_wide_values: np.ndarray,
+    olr_values: np.ndarray,
+    lat_sel: np.ndarray,
+    lat_values: np.ndarray,
+    times: pd.DatetimeIndex,
+    lon0: float,
+    dlon: float,
+    cfg: KelvinEventConfig,
+    *,
+    search_offset: bool,
+) -> Tuple[Dict[str, object], np.ndarray]:
+    """Meridional ``-OLR_K`` profile following the event, with no latitude constraint.
+
+    The longitude offset between the ridge and the convection is found with a
+    wide-band (not axis-based) convective index, so the choice of latitude
+    does not feed back into the structure.  The profile is the mean over the
+    event's path weighted by the ridge strength.
+    """
+    nlon = olr_values.shape[2]
+    t_idx, j0, _ = _fitted_path(event, times, lon0, dlon, nlon)
+    shift_deg = 0.0
+    if search_offset:
+        _, found, _, _, _ = _coupling(event, x_values, c_wide_values, times, lon0, dlon, cfg.coupling_max_offset_deg)
+        shift_deg = 0.0 if not np.isfinite(found) else float(found)
+    cols = (j0 + round(shift_deg / dlon)) % nlon
+    weights = np.clip(x_values[t_idx, j0], 0.0, None)
+    if not np.isfinite(weights).all() or weights.sum() <= 0.0:
+        weights = np.ones_like(weights)
+    sub = -olr_values[t_idx[:, None], lat_sel[None, :], cols[:, None]]
+    profile = (weights[:, None] * sub).sum(axis=0) / weights.sum()
+    metrics = _profile_metrics(profile, lat_values, cfg)
+    metrics["struct_offset_deg"] = shift_deg
+    return metrics, profile
+
+
 def _structure_diagnostics(
     u_k: Optional[np.ndarray],
     v_k: Optional[np.ndarray],
@@ -943,6 +1056,41 @@ def _match_convective_to_dynamical(
     return matches
 
 
+def _harmonize(fields: Dict[str, Optional[xr.DataArray]]) -> Dict[str, Optional[xr.DataArray]]:
+    """Standardise inputs and require one lat/lon grid and a common time axis.
+
+    Indices are compared by position later on (longitude shifts along wave
+    paths), so winds and OLR on different grids must fail loudly instead of
+    being silently misaligned.  Time is reduced to the common period.
+    """
+    present = {k: _standardize(v, k) for k, v in fields.items() if v is not None}
+    if not present:
+        return dict.fromkeys(fields)
+    ref_name = next(iter(present))
+    ref = present[ref_name]
+    for name, da in present.items():
+        for dim in ("lat", "lon"):
+            a, b = da[dim].values, ref[dim].values
+            if a.size != b.size or not np.allclose(a, b, atol=1.0e-3):
+                raise ValueError(
+                    f"`{name}` and `{ref_name}` are on different {dim} grids; regrid them to one grid first "
+                    "(for example with --regrid-deg 2.5 and OLR at 2.5 degrees)."
+                )
+    common = ref.time.values
+    for da in present.values():
+        common = np.intersect1d(common, da.time.values)
+    if common.size < 8:
+        raise ValueError("Inputs share fewer than 8 common time steps.")
+    out: Dict[str, Optional[xr.DataArray]] = {}
+    for name, da in fields.items():
+        if da is None:
+            out[name] = None
+        else:
+            sel = present[name].sel(time=common)
+            out[name] = sel.assign_coords(lat=ref.lat.values, lon=ref.lon.values)
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # Public workflow
 # --------------------------------------------------------------------------- #
@@ -977,6 +1125,15 @@ def identify_kelvin_events(
     prefiltered:
         Set ``True`` when inputs are already Kelvin-band filtered anomalies.
 
+    Notes
+    -----
+    ``conv_axis_lat`` is the (91-day, zonally smoothed) latitude of maximum
+    Kelvin-band OLR variance used for *sampling*; it is limited by
+    ``axis_lat_range`` and is not a measurement of the event.  The event-level
+    latitude of the convection is ``conv_peak_lat`` with ``conv_symmetry_index``,
+    ``conv_nh_fraction`` and ``conv_structure``, computed over
+    ``+/- structure_lat_max`` with no axis assumption.
+
     Returns
     -------
     KelvinEventCatalog
@@ -992,7 +1149,7 @@ def identify_kelvin_events(
         if da is None:
             return None
         if prefiltered:
-            return _standardize(da, name)
+            return da
         return kelvin_band_filter(
             da,
             period_days=cfg.period_days,
@@ -1003,10 +1160,11 @@ def identify_kelvin_events(
             n_harm=cfg.n_harm,
         )
 
-    u_k = prep(u, "u")
-    z_k = prep(z, "z")
-    v_k = prep(v, "v")
-    olr_k = prep(olr, "olr")
+    aligned = _harmonize({"u": u, "z": z, "v": v, "olr": olr})
+    u_k = prep(aligned["u"], "u")
+    z_k = prep(aligned["z"], "z")
+    v_k = prep(aligned["v"], "v")
+    olr_k = prep(aligned["olr"], "olr")
 
     indices: Dict[str, xr.DataArray] = {}
     track_kwargs = dict(
@@ -1034,7 +1192,7 @@ def identify_kelvin_events(
         dyn_events, dyn_tracks = detect_propagating_ridges(k_dyn, prefix="D", min_amplitude=cfg.dyn_min_amplitude, **track_kwargs)
 
     conv_events, conv_tracks = _empty_events(), _empty_tracks()
-    c_axis = c_fixed = axis = None
+    c_axis = c_fixed = c_wide = axis = None
     if olr_k is not None:
         axis = (
             axis_lat
@@ -1049,15 +1207,34 @@ def identify_kelvin_events(
         )
         c_axis = convective_kelvin_index(olr_k, axis, width_deg=cfg.conv_width_deg)
         c_fixed = fixed_band_convective_index(olr_k, band=cfg.fixed_band)
-        indices.update({"kelvin_convective_axis": c_axis, "kelvin_convective_fixed_band": c_fixed, "convective_axis_lat": axis})
+        c_wide = fixed_band_convective_index(olr_k, band=(-cfg.structure_lat_max, cfg.structure_lat_max))
+        indices.update(
+            {
+                "kelvin_convective_axis": c_axis,
+                "kelvin_convective_fixed_band": c_fixed,
+                "kelvin_convective_wide_band": c_wide,
+                "convective_axis_lat": axis,
+            }
+        )
         conv_events, conv_tracks = detect_propagating_ridges(c_axis, prefix="C", min_amplitude=cfg.conv_min_amplitude, **track_kwargs)
+
+    ref_index = k_dyn if k_dyn is not None else c_axis
+    times = pd.to_datetime(ref_index.time.values)
+    lon0 = float(ref_index.lon.values[0])
+    dlon = _require_global_longitude(ref_index.lon.values)
+
+    olr_values = c_wide_values = None
+    lat_sel = lat_sel_values = None
+    if olr_k is not None:
+        olr_values = olr_k.values.astype(float)
+        c_wide_values = np.nan_to_num(c_wide.values.astype(float))
+        lat_sel = np.flatnonzero(np.abs(olr_k.lat.values) <= cfg.structure_lat_max)
+        lat_sel_values = olr_k.lat.values[lat_sel]
+    profiles: Dict[str, np.ndarray] = {}
 
     # ---- dynamical events: coupling and structure ---------------------------
     dyn_rows: List[dict] = []
     if k_dyn is not None and not dyn_events.empty:
-        times = pd.to_datetime(k_dyn.time.values)
-        lon0 = float(k_dyn.lon.values[0])
-        dlon = _require_global_longitude(k_dyn.lon.values)
         k_values = np.nan_to_num(k_dyn.values.astype(float))
         c_axis_values = None if c_axis is None else c_axis.reindex(time=k_dyn.time).values.astype(float)
         c_fixed_values = None if c_fixed is None else c_fixed.reindex(time=k_dyn.time).values.astype(float)
@@ -1072,6 +1249,8 @@ def identify_kelvin_events(
                     "coupling_corr": np.nan,
                     "coupling_pvalue": np.nan,
                     "coupling_corr_fixed_band": np.nan,
+                    "coupling_corr_wide": np.nan,
+                    "coupling_pvalue_wide": np.nan,
                     "conv_offset_deg": np.nan,
                     "conv_axis_lat": np.nan,
                     "conv_peak": np.nan,
@@ -1096,6 +1275,18 @@ def identify_kelvin_events(
                     j_conv = (j0 + round(shift / dlon)) % k_values.shape[1]
                     row["conv_axis_lat"] = float(np.nanmean(axis_values[t_idx, j_conv]))
                     row["conv_peak"] = float(np.nanmax(c_axis_values[t_idx, j_conv]))
+                r_wide, _, p_wide, _, _ = _coupling(
+                    ev,
+                    k_values,
+                    c_wide_values,
+                    times,
+                    lon0,
+                    dlon,
+                    cfg.coupling_max_offset_deg,
+                    n_surrogates=cfg.coupling_surrogates,
+                    obs_per_day=cfg.obs_per_day,
+                )
+                row["coupling_corr_wide"], row["coupling_pvalue_wide"] = r_wide, p_wide
                 r_fixed, _, _, _, _ = _coupling(ev, k_values, c_fixed_values, times, lon0, dlon, cfg.coupling_max_offset_deg)
                 row["coupling_corr_fixed_band"] = r_fixed
                 if np.isfinite(shift):
@@ -1105,14 +1296,21 @@ def identify_kelvin_events(
                 u_values, v_values, lat_grid, t_idx, j0, dlon, cfg.symmetry_window_deg, cfg.symmetry_lat_max
             )
             row["u_symmetry_index"], row["v_to_u_ratio"] = sym, ratio
-            coupled = (
-                np.isfinite(row["coupling_corr"])
-                and row["coupling_corr"] >= cfg.coupling_threshold
-                and np.isfinite(row["coupling_pvalue"])
-                and row["coupling_pvalue"] <= cfg.coupling_alpha
+            # Either convective index may establish coupling.  The wide-band index
+            # carries no latitude assumption, so convection on the "wrong" side of
+            # an assumed axis range cannot make a coupled wave look dry.
+            coupled = _passes(row["coupling_corr"], row["coupling_pvalue"], cfg) or _passes(
+                row["coupling_corr_wide"], row["coupling_pvalue_wide"], cfg
             )
             row["kind"] = "coupled" if coupled else "dynamical_only"
             row["matched_event"] = ""
+            if olr_values is not None:
+                metrics, profile = _convective_structure(
+                    ev, k_values, c_wide_values, olr_values, lat_sel, lat_sel_values, times, lon0, dlon, cfg,
+                    search_offset=True,
+                )
+                row.update(metrics)
+                profiles[ev["event_id"]] = profile
             dyn_rows.append(row)
 
     dyn_table = pd.DataFrame(dyn_rows)
@@ -1132,6 +1330,13 @@ def identify_kelvin_events(
             t_mid = pd.Timestamp(ev["peak_time"])
             j = int(np.rint((ev["lon_peak"] - float(axis.lon.values[0])) / (360.0 / axis.sizes["lon"]))) % axis.sizes["lon"]
             row["conv_axis_lat"] = float(axis.sel(time=t_mid, method="nearest").values[j])
+        if olr_values is not None:
+            metrics, profile = _convective_structure(
+                ev, c_wide_values, c_wide_values, olr_values, lat_sel, lat_sel_values, times, lon0, dlon, cfg,
+                search_offset=False,
+            )
+            row.update(metrics)
+            profiles[ev["event_id"]] = profile
         conv_rows.append(row)
     conv_table = pd.DataFrame(conv_rows)
 
@@ -1154,7 +1359,20 @@ def identify_kelvin_events(
         tracks_parts.append(conv_tracks.assign(channel="convective"))
     tracks = pd.concat(tracks_parts, ignore_index=True) if tracks_parts else _empty_tracks().assign(channel=pd.Series(dtype=object))
 
-    return KelvinEventCatalog(events=events, tracks=tracks, indices=xr.Dataset(indices), config=cfg)
+    conv_profiles = None
+    final_ids = set(events["event_id"]) if not events.empty else set()
+    kept = [i for i in profiles if i in final_ids]
+    if kept:
+        conv_profiles = xr.DataArray(
+            np.stack([profiles[i] for i in kept]),
+            dims=("event_id", "lat"),
+            coords={"event_id": kept, "lat": lat_sel_values},
+            name="conv_profile",
+            attrs={"long_name": "wave-following mean of -OLR_K along the event path"},
+        )
+    return KelvinEventCatalog(
+        events=events, tracks=tracks, indices=xr.Dataset(indices), config=cfg, conv_profiles=conv_profiles
+    )
 
 
 # --------------------------------------------------------------------------- #

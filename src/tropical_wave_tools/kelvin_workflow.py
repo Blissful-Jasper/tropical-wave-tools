@@ -36,13 +36,18 @@ from tropical_wave_tools.kelvin_events import (
 from tropical_wave_tools.matsuno import GRAVITY
 
 __all__ = [
+    "STRUCTURE_CLASSES",
     "WorkflowResult",
     "load_reanalysis_field",
     "plot_region_report",
+    "plot_structure_report",
     "regrid_global",
     "run_regional_workflow",
+    "structure_summary",
     "summarize_events",
 ]
+
+STRUCTURE_CLASSES = ("northern", "equatorial", "symmetric_off_equator", "southern", "weak")
 
 _LEVEL_DIMS = ("pressure_level", "level", "plev", "isobaricInhPa", "lev")
 _SEASONS = {12: "DJF", 1: "DJF", 2: "DJF", 3: "MAM", 4: "MAM", 5: "MAM",
@@ -175,6 +180,10 @@ def summarize_events(events: pd.DataFrame, *, years: Optional[float] = None) -> 
         for c in (
             "speed_ms",
             "peak_amp",
+            "conv_peak_lat",
+            "conv_symmetry_index",
+            "conv_nh_fraction",
+            "struct_peak",
             "conv_axis_lat",
             "conv_offset_deg",
             "u_symmetry_index",
@@ -200,6 +209,33 @@ def summarize_events(events: pd.DataFrame, *, years: Optional[float] = None) -> 
     return out.sort_values(["kind", "_s"]).drop(columns="_s").reset_index(drop=True)
 
 
+def structure_summary(events: pd.DataFrame) -> pd.DataFrame:
+    """Counts and fractions of each convective meridional-structure class.
+
+    Rows are ``kind`` x season (plus ``ALL``).  ``conv_structure`` comes from
+    the wave-following ``-OLR_K`` profile over the full latitude band, with no
+    assumption about where the convection should be.  Fractions of small
+    groups are noisy; look at ``n`` before reading them.
+    """
+    if events.empty or "conv_structure" not in events.columns:
+        return pd.DataFrame()
+    table = events.copy()
+    table["season"] = pd.to_datetime(table["peak_time"]).dt.month.map(_SEASONS)
+    groups = list(table.groupby(["kind", "season"])) + [((k, "ALL"), g) for k, g in table.groupby("kind")]
+    rows = []
+    for (kind, season), group in groups:
+        counts = group["conv_structure"].value_counts()
+        row: Dict[str, object] = {"kind": kind, "season": season, "n": len(group)}
+        for cls in STRUCTURE_CLASSES:
+            row[f"n_{cls}"] = int(counts.get(cls, 0))
+            row[f"frac_{cls}"] = counts.get(cls, 0) / len(group)
+        rows.append(row)
+    order = {"DJF": 0, "MAM": 1, "JJA": 2, "SON": 3, "ALL": 4}
+    out = pd.DataFrame(rows)
+    out["_s"] = out["season"].map(order)
+    return out.sort_values(["kind", "_s"]).drop(columns="_s").reset_index(drop=True)
+
+
 # --------------------------------------------------------------------------- #
 # Workflow
 # --------------------------------------------------------------------------- #
@@ -214,6 +250,8 @@ class WorkflowResult:
     summary: pd.DataFrame
     filtered: Dict[str, xr.DataArray]
     figure: Optional[Path] = None
+    structure: Optional[pd.DataFrame] = None
+    structure_figure: Optional[Path] = None
 
 
 def run_regional_workflow(
@@ -269,13 +307,22 @@ def run_regional_workflow(
         ref = next(iter(filtered.values()))
         years = (pd.Timestamp(ref.time.values[-1]) - pd.Timestamp(ref.time.values[0])).days / 365.25
     summary = summarize_events(selected.events, years=years)
+    structure = structure_summary(selected.events)
 
-    result = WorkflowResult(catalog=selected, full_catalog=full, summary=summary, filtered=filtered)
+    result = WorkflowResult(
+        catalog=selected, full_catalog=full, summary=summary, filtered=filtered, structure=structure
+    )
     if output_dir is not None:
         out = selected.save(output_dir)
         summary.to_csv(out / "summary.csv", index=False)
+        if not structure.empty:
+            structure.to_csv(out / "structure_summary.csv", index=False)
         if make_figures and not selected.events.empty:
             result.figure = plot_region_report(result, out / "kelvin_region_report.png", region_lon=region_lon)
+            if selected.conv_profiles is not None:
+                result.structure_figure = plot_structure_report(
+                    result, out / "kelvin_structure_report.png", region_lon=region_lon
+                )
     return result
 
 
@@ -352,17 +399,116 @@ def plot_region_report(
     ax.legend(frameon=False)
 
     ax = axes[1, 1]
-    if "conv_axis_lat" in sel and sel["conv_axis_lat"].notna().any():
-        ax.hist(sel["conv_axis_lat"].dropna(), bins=np.arange(-20, 21, 2.5), color="#c4561d")
-        ax.axvline(sel["conv_axis_lat"].median(), color="k", ls="--", lw=1)
+    lat_col = "conv_peak_lat" if "conv_peak_lat" in sel else "conv_axis_lat"
+    if lat_col in sel and sel[lat_col].notna().any():
+        strong = sel[sel.get("conv_structure", "") != "weak"] if "conv_structure" in sel else sel
+        ax.hist(strong[lat_col].dropna(), bins=np.arange(-20, 21, 2.5), color="#c4561d")
+        ax.axvline(strong[lat_col].median(), color="k", ls="--", lw=1)
     ax.axvline(0.0, color="0.6", lw=0.8)
-    ax.set(title="Convective-axis latitude per event", xlabel="Latitude", ylabel="Events")
+    ax.set(title="Latitude of peak convection per event (no axis constraint)", xlabel="Latitude", ylabel="Events")
 
     ax = axes[1, 2]
     if "u_symmetry_index" in sel and sel["u_symmetry_index"].notna().any():
         ax.hist(sel["u_symmetry_index"].dropna(), bins=np.linspace(-1, 1, 21), color="#2a6fb0")
         ax.axvline(sel["u_symmetry_index"].median(), color="k", ls="--", lw=1)
     ax.set(title="u equatorial symmetry index (+1 = symmetric)", xlabel="Index", ylabel="Events")
+
+    out = Path(output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    return out
+
+
+_CLASS_COLORS = {
+    "northern": "#c4561d",
+    "equatorial": "#2a6fb0",
+    "symmetric_off_equator": "#7b4fa3",
+    "southern": "#6a9f3a",
+    "weak": "#b0b0b0",
+}
+
+
+def plot_structure_report(
+    result: WorkflowResult,
+    output: "str | Path",
+    *,
+    region_lon: Optional[Tuple[float, float]] = None,
+    kinds: Tuple[str, ...] = ("coupled", "dynamical_only"),
+) -> Path:
+    """Per-event convective structure: are the Kelvin waves' convection signals all north?
+
+    (a) every event's wave-following ``-OLR_K`` latitude profile, each divided
+    by its own peak and sorted by the latitude of that peak (weak events are
+    drawn grey); (b) latitude of peak convection for non-weak events;
+    (c) ``u`` symmetry versus convective symmetry per event; (d) share of
+    each structure class by season.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    catalog = result.catalog
+    events = catalog.events[catalog.events["kind"].isin(list(kinds))]
+    profiles = catalog.conv_profiles
+    fig, axes = plt.subplots(2, 2, figsize=(13, 9.5), constrained_layout=True)
+    title = "Convective meridional structure of Kelvin events"
+    if region_lon is not None:
+        title += f" ({region_lon[0]:g}-{region_lon[1]:g}E)"
+    fig.suptitle(f"{title}; N={len(events)} ({', '.join(kinds)})")
+
+    ax = axes[0, 0]
+    if profiles is not None and len(events):
+        ids = [i for i in events.sort_values("conv_peak_lat")["event_id"] if i in set(profiles.event_id.values)]
+        data = profiles.sel(event_id=ids)
+        peak = data.max("lat").where(lambda x: x > 0)
+        norm = (data / peak).values
+        weak = (events.set_index("event_id").loc[ids, "conv_structure"] == "weak").to_numpy()
+        norm = np.where(weak[:, None], np.nan, norm)
+        mesh = ax.pcolormesh(
+            data.lat, np.arange(len(ids)), np.clip(norm, 0, 1), cmap="magma_r", vmin=0, vmax=1, shading="auto"
+        )
+        ax.axvline(0.0, color="k", lw=0.6)
+        ax.set(title="Per-event profile, own peak = 1 (sorted by peak latitude)", xlabel="Latitude", ylabel="Event (sorted)")
+        fig.colorbar(mesh, ax=ax, shrink=0.85)
+
+    ax = axes[0, 1]
+    if "conv_peak_lat" in events:
+        strong = events[events["conv_structure"] != "weak"]
+        ax.hist(strong["conv_peak_lat"].dropna(), bins=np.arange(-17.5, 18, 2.5), color="#c4561d")
+        if len(strong):
+            ax.axvline(strong["conv_peak_lat"].median(), color="k", ls="--", lw=1)
+        ax.axvline(0.0, color="0.6", lw=0.8)
+        ax.set(title=f"Latitude of peak convection (non-weak, N={len(strong)})", xlabel="Latitude", ylabel="Events")
+
+    ax = axes[1, 0]
+    if {"u_symmetry_index", "conv_symmetry_index"} <= set(events.columns):
+        for cls, group in events.groupby("conv_structure"):
+            ax.scatter(group["u_symmetry_index"], group["conv_symmetry_index"], s=22, alpha=0.8,
+                       color=_CLASS_COLORS.get(cls, "k"), label=f"{cls} ({len(group)})")
+        ax.set(title="Wind vs convective equatorial symmetry", xlabel="u symmetry index", ylabel="OLR symmetry index",
+               xlim=(-1.05, 1.05), ylim=(-0.05, 1.05))
+        ax.legend(frameon=False, fontsize=8)
+
+    ax = axes[1, 1]
+    table = result.structure
+    if table is not None and not table.empty:
+        sub = table[(table["kind"].isin(list(kinds)))]
+        seasons = ["DJF", "MAM", "JJA", "SON", "ALL"]
+        pooled = (
+            sub.groupby("season")[[f"n_{c}" for c in STRUCTURE_CLASSES]].sum().reindex(seasons).fillna(0)
+        )
+        totals = pooled.sum(axis=1).replace(0, np.nan)
+        bottom = np.zeros(len(seasons))
+        for cls in STRUCTURE_CLASSES:
+            frac = (pooled[f"n_{cls}"] / totals).fillna(0).to_numpy()
+            ax.bar(seasons, frac, bottom=bottom, color=_CLASS_COLORS[cls], label=cls)
+            bottom += frac
+        for i in range(len(seasons)):
+            ax.text(i, 1.02, f"n={int(totals.iloc[i]) if np.isfinite(totals.iloc[i]) else 0}", ha="center", fontsize=8)
+        ax.set(title="Share of structure classes", ylabel="Fraction of events", ylim=(0, 1.1))
+        ax.legend(frameon=False, fontsize=8, loc="center left", bbox_to_anchor=(1.0, 0.5))
 
     out = Path(output)
     out.parent.mkdir(parents=True, exist_ok=True)
