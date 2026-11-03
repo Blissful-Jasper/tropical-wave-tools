@@ -63,6 +63,7 @@ __all__ = [
     "kelvin_meridional_structure",
     "mirror_latitude",
     "project_onto_kelvin",
+    "select_events_in_region",
     "symmetric_antisymmetric",
 ]
 
@@ -136,6 +137,26 @@ class KelvinEventCatalog:
         if self.events.empty:
             return pd.Series(dtype=int, name="count")
         return self.events["kind"].value_counts().rename("count")
+
+    def in_region(self, lon_range: Tuple[float, float], *, min_points: int = 3) -> "KelvinEventCatalog":
+        """Keep events whose tracked ridge spends at least ``min_points`` steps inside ``lon_range``.
+
+        Detection must run on a global longitude grid; this only restricts the
+        *reporting* to a basin (e.g. ``(120, 280)`` for the Pacific).  Ranges
+        that wrap through 0 deg, such as ``(300, 60)``, are supported.
+        """
+        events, tracks = select_events_in_region(self.events, self.tracks, lon_range, min_points=min_points)
+        return KelvinEventCatalog(events=events, tracks=tracks, indices=self.indices, config=self.config)
+
+    def in_window(self, start: "str | pd.Timestamp", end: "str | pd.Timestamp") -> "KelvinEventCatalog":
+        """Keep events whose ``peak_time`` lies in ``[start, end]`` (use to drop padding/edge periods)."""
+        if self.events.empty:
+            return self
+        peak = pd.to_datetime(self.events["peak_time"])
+        keep = (peak >= pd.Timestamp(start)) & (peak <= pd.Timestamp(end))
+        events = self.events[keep].reset_index(drop=True)
+        tracks = _tracks_of_events(events, self.tracks)
+        return KelvinEventCatalog(events=events, tracks=tracks, indices=self.indices, config=self.config)
 
     def save(self, directory: "str | Path") -> Path:
         """Write ``events.csv``, ``tracks.csv`` and (if possible) ``indices.nc``."""
@@ -721,6 +742,34 @@ def _empty_events() -> pd.DataFrame:
 
 def _empty_tracks() -> pd.DataFrame:
     return pd.DataFrame(columns=["event_id", "time", "lon", "lon_unwrapped", "amp_sigma"])
+
+
+def _tracks_of_events(events: pd.DataFrame, tracks: pd.DataFrame) -> pd.DataFrame:
+    """Tracks of the given events plus the convective ridges matched to them."""
+    ids = set(events["event_id"])
+    if "matched_event" in events.columns:
+        for matched in events["matched_event"].fillna(""):
+            ids.update(m for m in str(matched).split(",") if m)
+    return tracks[tracks["event_id"].isin(ids)].reset_index(drop=True)
+
+
+def select_events_in_region(
+    events: pd.DataFrame,
+    tracks: pd.DataFrame,
+    lon_range: Tuple[float, float],
+    *,
+    min_points: int = 3,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Restrict events to those with ``>= min_points`` track points inside a longitude window."""
+    if events.empty or tracks.empty:
+        return events.iloc[0:0].copy(), tracks.iloc[0:0].copy()
+    low, high = (float(lon_range[0]) % 360.0, float(lon_range[1]) % 360.0)
+    lon = np.mod(tracks["lon"].to_numpy(dtype=float), 360.0)
+    inside = (lon >= low) & (lon <= high) if low <= high else (lon >= low) | (lon <= high)
+    counts = tracks[inside].groupby("event_id").size()
+    keep = set(counts[counts >= min_points].index)
+    kept_events = events[events["event_id"].isin(keep)].reset_index(drop=True)
+    return kept_events, _tracks_of_events(kept_events, tracks)
 
 
 def event_count_sensitivity(

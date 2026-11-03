@@ -191,6 +191,49 @@ PYTHONPATH=src python examples/kelvin_event_demo.py docs/assets/kelvin_events_de
 | `u_symmetry_index`, `v_to_u_ratio` | 风场对称性与 Kelvin 纯度 |
 | `matched_event` | 与之匹配的对流脊线 ID |
 
+## ERA5 850 hPa、太平洋、2000–2020 工作流
+
+**不能只读太平洋一块数据。** Kelvin 滤波需要完整的纬向波数,追踪需要周期边界,区域数据会被 `identify_kelvin_events` 以 `ValueError` 拒绝。正确做法是全球经度计算,再用 `--region-lon` 只统计穿过太平洋的事件(默认 `120 280`,即 120°E–80°W;事件的脊线在窗口内至少停留 3 天才算,可用 `--min-region-points` 调整,支持跨 0° 的窗口)。
+
+数据准备(下载后自行转换,仓库不含 ERA5 数据,也没有 CDS 下载代码):
+
+| 变量 | 要求 | 常见陷阱 |
+|---|---|---|
+| `u`、`v` | 850 hPa,日平均,m/s,**全球经度** | 小时数据会被自动平均为日值 |
+| `z` | 850 hPa | ERA5 的 `z` 是**位势**(m² s⁻²),必须加 `--z-geopotential` 除以 g,否则 `z` 项会被放大约 10 倍 |
+| OLR | W m⁻² | ERA5 的 `ttr` 是累积量、符号为负,需要 `--olr-factor`(小时累积为 `-1/3600`);累积口径请对照 ECMWF 文档确认,这里没有验证。也可以用 NOAA 插值 OLR |
+| 网格 | 0.25° 全球 20 年日数据每个变量约 14 GB | 用 `--regrid-deg 2.5` 先块平均再插值到对赤道对称的 2.5° 网格 |
+
+```bash
+tropical-wave-tools kelvin-events \
+  --u era5_u850.nc --z era5_z850.nc --v era5_v850.nc \
+  --olr olr.day.mean.nc \
+  --level 850 --regrid-deg 2.5 --z-geopotential \
+  --time-start 2000-01-01 --time-end 2020-12-31 --buffer-days 30 \
+  --region-lon 120 280 \
+  --axis-lat-min 0 --axis-lat-max 15 \
+  --dyn-min-amplitude 1.0 --conv-min-amplitude 8 \
+  --output-dir outputs/kelvin_pacific
+```
+
+要点:
+
+- 窗口两端各多读 `--buffer-days` 天,事件按 `peak_time` 再裁回 2000–2020,避免滤波边缘效应。
+- `--axis-lat-min 0 --axis-lat-max 15` 把对流轴限定在 ITCZ 一支,防止在西太平洋与 SPCZ(南半球)之间跳变;如果你要看南半球对流,改成 `-15 20` 并检查 `conv_axis_lat` 的分布。
+- 阈值请先看敏感性:`event_count_sensitivity(catalog.indices["kelvin_dynamical"])`。`--dyn-min-amplitude 1.0`、`--conv-min-amplitude 8` 只是起点,不是经过检验的推荐值。
+
+输出:`events.csv`、`tracks.csv`、`indices.nc`、`summary.csv`(按 kind × 季节的事件数、中位速度、中位 `conv_axis_lat`、`u_symmetry_index`、`v_to_u_ratio`、轴/固定带峰值比),以及 `kelvin_region_report.png`(`u`、`v`、`-OLR` 随波合成图,峰值剖面,对流轴纬度与 `u` 对称指数分布)。
+
+**读结果时回答你的问题:**
+
+1. `coupled` 事件的 `median_conv_axis_lat` 是否明显大于 0?
+2. 同一批事件的 `median_u_symmetry_index` 是否接近 1?
+3. `median_v_to_u_ratio` 是否很小?如果不小,说明 `v` 并不对称/并非纯 Kelvin,风场"对称"只对 `u`、`z` 成立。
+4. `median_peak_ratio_axis_over_fixed` 是否明显大于 1?这是固定赤道带少看到多少对流的直接度量。
+5. 分季节看(DJF/JJA),ITCZ 位置随季节变,结论可能不同。
+
+合成数据的压力测试(21 年日数据、2.5°、17 个纬度、150 个注入事件):约 34 秒、峰值内存约 2.6 GB。
+
 ## 参数建议
 
 - **阈值是最主要的调参旋钮。** 相对阈值(σ)在没有真实波动的记录里仍然会放进噪声脊线;请同时设绝对振幅阈值,并先看 `event_count_sensitivity(index, peak_sigmas=(1, 1.5, 2, 3))`:事件数在一段阈值范围内几乎不变的"平台"才是稳健的选择。

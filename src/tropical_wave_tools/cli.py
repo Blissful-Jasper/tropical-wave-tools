@@ -150,10 +150,19 @@ def build_parser() -> argparse.ArgumentParser:
     kelvin_parser.add_argument("--z-var", default="z", help="Geopotential-height variable name (metres).")
     kelvin_parser.add_argument("--v", default=None, help="Optional meridional-wind file (v/u diagnostic only).")
     kelvin_parser.add_argument("--v-var", default="v", help="Meridional-wind variable name.")
-    kelvin_parser.add_argument("--time-start", default=None, help="Start date.")
-    kelvin_parser.add_argument("--time-end", default=None, help="End date.")
+    kelvin_parser.add_argument("--time-start", default=None, help="Start of the analysis window.")
+    kelvin_parser.add_argument("--time-end", default=None, help="End of the analysis window.")
+    kelvin_parser.add_argument("--buffer-days", type=int, default=30, help="Extra days read on each side to keep filter edge effects out of the window.")
     kelvin_parser.add_argument("--lat-min", type=float, default=-20.0, help="Minimum latitude (keep symmetric about 0).")
     kelvin_parser.add_argument("--lat-max", type=float, default=20.0, help="Maximum latitude.")
+    kelvin_parser.add_argument("--level", type=float, default=None, help="Pressure level (hPa) to select if files have a level dimension, e.g. 850.")
+    kelvin_parser.add_argument("--regrid-deg", type=float, default=None, help="Regrid to a global symmetric grid of this resolution (2.5 recommended for 0.25-degree ERA5).")
+    kelvin_parser.add_argument("--z-geopotential", action="store_true", help="--z is geopotential (m2 s-2, as ERA5 'z'); divide by g to get height.")
+    kelvin_parser.add_argument("--olr-factor", type=float, default=1.0, help="Multiply the OLR variable by this factor (e.g. -1/3600 for hourly-accumulated ERA5 ttr; verify accumulation convention).")
+    kelvin_parser.add_argument("--region-lon", type=float, nargs=2, metavar=("MIN", "MAX"), default=None, help="Report only events passing through this longitude window (deg E; wrap-around allowed), e.g. 120 280 for the Pacific. Detection still uses the global grid.")
+    kelvin_parser.add_argument("--min-region-points", type=int, default=3, help="Minimum tracked days inside --region-lon.")
+    kelvin_parser.add_argument("--keep-seasonal-cycle", action="store_true", help="Do not remove the seasonal cycle (only for records shorter than a year).")
+    kelvin_parser.add_argument("--no-figures", action="store_true", help="Skip the report figure.")
     kelvin_parser.add_argument("--spd", type=int, default=1, help="Samples per day.")
     kelvin_parser.add_argument("--n-harm", type=int, default=3, help="Annual-cycle harmonics removed before filtering.")
     kelvin_parser.add_argument("--depth", type=float, default=25.0, help="Projection equivalent depth (m).")
@@ -271,21 +280,32 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
 
     if args.command == "kelvin-events":
-        from tropical_wave_tools.kelvin_events import KelvinEventConfig, identify_kelvin_events
+        from tropical_wave_tools.kelvin_events import KelvinEventConfig
+        from tropical_wave_tools.kelvin_workflow import load_reanalysis_field, run_regional_workflow
 
         if args.olr is None and args.u is None:
             parser.error("kelvin-events needs --olr and/or --u.")
         time_range = _resolve_time_range(args.time_start, args.time_end)
         lat_range = (args.lat_min, args.lat_max)
 
-        def _load(path: Optional[str], variable: str):
+        def _load(path: Optional[str], variable: str, **extra):
             if path is None:
                 return None
-            return load_dataarray(path, variable=variable, lat_range=lat_range, time_range=time_range)
+            return load_reanalysis_field(
+                path,
+                variable,
+                level=args.level,
+                lat_range=lat_range,
+                time_range=time_range,
+                buffer_days=args.buffer_days,
+                regrid_deg=args.regrid_deg,
+                **extra,
+            )
 
         config = KelvinEventConfig(
             obs_per_day=args.spd,
             n_harm=args.n_harm,
+            remove_seasonal_cycle=not args.keep_seasonal_cycle,
             projection_depth=args.depth,
             peak_sigma=args.peak_sigma,
             continue_sigma=args.continue_sigma,
@@ -293,16 +313,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             conv_min_amplitude=args.conv_min_amplitude,
             axis_lat_range=(args.axis_lat_min, args.axis_lat_max),
         )
-        catalog = identify_kelvin_events(
+        result = run_regional_workflow(
             u=_load(args.u, args.u_var),
-            z=_load(args.z, args.z_var),
+            z=_load(args.z, args.z_var, geopotential=args.z_geopotential),
             v=_load(args.v, args.v_var),
-            olr=_load(args.olr, args.olr_var),
+            olr=_load(args.olr, args.olr_var, factor=args.olr_factor),
             config=config,
+            region_lon=tuple(args.region_lon) if args.region_lon else None,
+            time_range=time_range,
+            min_points=args.min_region_points,
+            output_dir=args.output_dir,
+            make_figures=not args.no_figures,
         )
-        output_dir = catalog.save(args.output_dir)
-        print(f"Kelvin events written to: {output_dir}")
-        print(catalog.summary().to_string())
+        print(f"Kelvin events written to: {args.output_dir}")
+        print(result.catalog.summary().to_string())
+        if not result.summary.empty:
+            print(result.summary.round(2).to_string(index=False))
         return 0
 
     parser.error(f"Unknown command: {args.command}")

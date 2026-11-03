@@ -17,6 +17,7 @@ from tropical_wave_tools.kelvin_events import (
     kelvin_dynamical_index,
     kelvin_meridional_structure,
     project_onto_kelvin,
+    select_events_in_region,
     symmetric_antisymmetric,
 )
 from tropical_wave_tools.sample_data import open_example_olr
@@ -342,3 +343,33 @@ def test_runs_on_packaged_olr_sample() -> None:
     if not result.events.empty:
         assert result.events["speed_ms"].between(8.0, 30.0).all()
         assert (result.events["kind"] == "convective").all()
+
+
+# --------------------------------------------------------------------------- #
+# Regional / window reporting
+# --------------------------------------------------------------------------- #
+def test_region_selection_uses_track_points_and_handles_wraparound(catalog) -> None:
+    ordered = catalog.events.sort_values("start_time")
+    first, second = ordered["event_id"].tolist()
+    # Event 1 spans ~36-210E, event 2 ~104-309E.
+    west_only = catalog.in_region((240.0, 300.0))
+    assert west_only.events["event_id"].tolist() == [second]
+    # Tracks of the kept event plus its matched convective ridge(s) only.
+    expected = {second, *[m for m in west_only.events["matched_event"].iloc[0].split(",") if m]}
+    assert set(west_only.tracks["event_id"]) == expected
+    assert first not in set(west_only.tracks["event_id"])
+    wrapped = catalog.in_region((300.0, 60.0))
+    assert first in set(wrapped.events["event_id"])
+    both = catalog.in_region((120.0, 200.0))
+    assert set(both.events["event_id"]) == {first, second}
+    assert catalog.in_region((350.0, 355.0)).events.empty
+    # A stricter point count removes marginal overlaps.
+    events, _ = select_events_in_region(catalog.events, catalog.tracks, (200.0, 210.0), min_points=50)
+    assert events.empty
+
+
+def test_window_selection_by_peak_time(catalog) -> None:
+    only_first = catalog.in_window("2000-01-01", "2000-03-01")
+    assert len(only_first.events) == 1
+    assert only_first.events["start_time"].iloc[0] < pd.Timestamp("2000-03-01")
+    assert catalog.in_window("2001-01-01", "2001-12-31").events.empty
